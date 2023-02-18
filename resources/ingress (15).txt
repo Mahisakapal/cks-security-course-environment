@@ -1,0 +1,10 @@
+# Install NGINX Ingress
+kubectl apply -f https://raw.githubusercontent.com/killer-sh/cks-course-environment/master/course-content/cluster-setup/secure-ingress/nginx-ingress-controller.yaml
+
+
+# Complete Example
+https://github.com/killer-sh/cks-course-environment/tree/master/course-content/cluster-setup/secure-ingress
+
+
+# K8s Ingress Docs
+https://kubernetes.io/docs/concepts/services-networking/ingress

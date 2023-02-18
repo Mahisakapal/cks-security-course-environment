@@ -1,0 +1,5 @@
+# from inside a Pod we can do:
+cat /run/secrets/kubernetes.io/serviceaccount/token
+
+curl https://kubernetes.default -k -H "Authorization: Bearer SA_TOKEN"
+

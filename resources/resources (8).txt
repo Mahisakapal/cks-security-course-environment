@@ -1,0 +1,6 @@
+# frontend->backend NP
+https://github.com/killer-sh/cks-course-environment/tree/master/course-content/cluster-setup/network-policies/frontend-backend
+
+# default-deny NP which still allows DNS resolution
+https://github.com/killer-sh/cks-course-environment/blob/master/course-content/cluster-setup/network-policies/default-deny/default-deny-allow-dns.yaml
+

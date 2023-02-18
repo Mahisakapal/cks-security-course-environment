@@ -1,0 +1,6 @@
+# apparmor profile
+https://github.com/killer-sh/cks-course-environment/blob/master/course-content/system-hardening/kernel-hardening-tools/apparmor/profile-docker-nginx
+
+
+# k8s docs apparmor
+https://kubernetes.io/docs/tutorials/clusters/apparmor/#example

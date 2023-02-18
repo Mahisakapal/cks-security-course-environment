@@ -1,0 +1,7 @@
+# IF THE INSTALL SCRIPT FAILS then you can try to change the URL= further down in the script from latest to a specific release
+
+bash <(curl -s https://raw.githubusercontent.com/killer-sh/cks-course-environment/master/course-content/microservice-vulnerabilities/container-runtimes/gvisor/install_gvisor.sh)
+
+
+# Example of Pod+RuntimeClass:
+https://github.com/killer-sh/cks-course-environment/blob/master/course-content/microservice-vulnerabilities/container-runtimes/gvisor/example.yaml

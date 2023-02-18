@@ -1,0 +1,6 @@
+# syscalls
+https://www.youtube.com/watch?v=8g-NUUmCeGI
+
+# AppArmor, SELinux Introduction 
+https://www.youtube.com/watch?v=JFjXvIwAeVI
+

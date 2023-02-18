@@ -1,0 +1,3 @@
+# Syscall talk by Liz Rice
+https://www.youtube.com/watch?v=8g-NUUmCeGI
+

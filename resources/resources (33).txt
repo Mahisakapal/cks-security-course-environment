@@ -1,0 +1,6 @@
+# kubeadm upgrade
+https://kubernetes.io/docs/tasks/administer-cluster/kubeadm/kubeadm-upgrade
+
+# k8s versions
+https://kubernetes.io/docs/setup/release/version-skew-policy
+

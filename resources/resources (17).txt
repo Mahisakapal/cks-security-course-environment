@@ -1,0 +1,4 @@
+https://cloud.google.com/compute/docs/storing-retrieving-metadata
+
+curl "http://metadata.google.internal/computeMetadata/v1/instance/disks/" -H "Metadata-Flavor: Google"
+

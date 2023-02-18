@@ -1,0 +1,11 @@
+# get example
+git clone https://github.com/killer-sh/cks-course-environment.git
+cp -r cks-course-environment/course-content/supply-chain-security/secure-the-supply-chain/whitelist-registries/ImagePolicyWebhook/ /etc/kubernetes/admission
+
+
+# to debug the apiserver we check logs in:
+/var/log/pods/kube-system_kube-apiserver*
+
+
+# example of an external service which can be used
+https://github.com/flavio/kube-image-bouncer

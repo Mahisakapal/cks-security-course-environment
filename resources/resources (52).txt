@@ -1,0 +1,5 @@
+git clone https://github.com/killer-sh/cks-course-environment.git
+
+cd cks-course-environment/course-content/supply-chain-security/static-analysis/conftest/docker
+
+./run.sh

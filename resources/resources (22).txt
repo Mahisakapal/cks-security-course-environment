@@ -1,0 +1,22 @@
+k create clusterrole deploy-deleter --verb=delete --resource=deployment
+
+k create clusterrolebinding deploy-deleter --clusterrole=deploy-deleter --user=jane
+
+k -n red create rolebinding deploy-deleter --clusterrole=deploy-deleter --user=jim
+
+
+# test jane
+k auth can-i delete deploy --as jane # yes
+k auth can-i delete deploy --as jane -n red # yes
+k auth can-i delete deploy --as jane -n blue # yes
+k auth can-i delete deploy --as jane -A # yes
+k auth can-i create deploy --as jane --all-namespaces # no
+
+
+
+# test jim
+k auth can-i delete deploy --as jim # no
+k auth can-i delete deploy --as jim -A # no
+k auth can-i delete deploy --as jim -n red # yes
+k auth can-i delete deploy --as jim -n blue # no
+

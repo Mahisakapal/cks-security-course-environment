@@ -1,0 +1,5 @@
+https://v1-22.docs.kubernetes.io/docs/concepts/configuration/secret/#risks
+
+https://www.youtube.com/watch?v=f4Ru6CPG1z4
+
+https://www.cncf.io/webinars/kubernetes-secrets-management-build-secure-apps-faster-without-secrets
