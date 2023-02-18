@@ -1,0 +1,853 @@
+
+
+As we know we can use deploment to handle RS update or pod modifivtion 
+what is we did some misttice and want to revert that changes so it's esay with deploment 
+
+to set change the image:  kubectl set image deploment_name container_naem=New_Image 
+
+kubectl rollout history deploment_name      # it will show runmber timer we have did the chnages and the current number of changes 
+
+kubectl rollout undo deploment_name --to-revision=anynumber_you want 
+
+kubectl rollout undo petclinec_dp --to-revision=4
+
+
+
+Note: whenever you work with ingress your underhood service should be cluster IP. don't use nodepaort or loadbalencer 
+
+and your ingress service can be loadbalencer or nodepaort only becouse it should be accessble from outside 
+
+kube-bance:
+
+This tool to get cluster matrices for security 
+
+kubect applye kube-bannc.yaml from resource dir and when job complitated you have to logs where you can see number of failed jobs
+in same logs you can find the remidaction for that issue you just have to run the cmd and your good to go 
+
+
+====================================================================================
+
+rancer is ther service whihc help us to manage many opration on kubernetes like createing a disk sannpshot and many more 
+
+https://ranchermanager.docs.rancher.com/v2.5/pages-for-subheaders/install-upgrade-on-a-kubernetes-cluster
+
+
+====================================================================================
+
+kubectl edit node -o ymal       # to see node configuretion you can here you can check max numbers of pods
+
+====================================================================================
+
+check the configuretion of helm 
+
+helm lint       # be there in same directory 
+
+helm template .         # this will give you output of your chart by include vaule from all template 
+
+helm template . | kubectl apply -f -        # this show you failed with value if we haved missedout it show you ""
+
+
+=======================================
+
+how to install helm chart 
+
+helm install chart-1 .          # to install all the default value 
+
+helm install chart-1 . -f new-values.yaml       # to install the chart by using coustom file 
+
+if you have your coustom values file in other loction give full path of it 
+
+kubectl get deploment, svc, pod             # this is the way to get multipul resource at sametime
+
+
+=======================================
+
+we have seen how _helpers.tpl use it's basicaly use for the created skeletan or template for your  yaml file 
+
+you can create a new a _demo.tpl seems like below 
+
+
+{{- define "labels" -}}
+ app: nginx                  # this 3 labels going to add in yaml
+ version: vl
+ team: production
+{{- end -}}
+
+
+See we have created this file to use labels 
+
+now how we are gonug to use this our deploment or svc .yaml file 
+
+apiVersion: apps/vl
+kind: Deployment
+metadata:
+name: {{ .Values.deployment.name }}
+labels: {{- include "labels". |  nindent 4 }}           # This is the IMP file 
+
+after include we have to give name what we use in _demo.tpl file we give labels
+
+nindent 4       = mean new line indent 4 means after this it will go to new line and after 4 spase omate ther value like below 
+
+labels: {{- include "labels". |  nindent 4 }}  
+    app: nginx
+    version: vl
+    team: production
+    
+=======================================================================================   
+
+Conditional template: 
+
+it's come in use when want a resource to get created on particulrt template.
+
+again this can done by using a _filename.tpl 
+
+
+in file where want to add Conditional resource here we are demonstarting container add below code in deploment.yaml but can be service or any other 
+
+deploment.yaml 
+
+{{- if eq .Values.container1.enabled true - }}          # container1 we have to enabled in values.yaml 
+{{ - include "container1" .  | nindent 8}}              # if Conditional pass whihc resource we want that we have give here (container1) with indention number 
+{{ - end -}}
+
+---------
+values.yaml
+
+container1:
+  enabled: true
+
+
+-----------------
+
+_demo.tpl 
+
+{{- define "container1" -}}
+- name: newcontainer 
+  image: "{{ .Values.deployment.image.app }}:{{ .Values.deploment.image.tag}}"
+  ports:
+    - name: https
+      containerPort: 80
+      protocol: TCP 
+{{- end  -}  
+
+
+-----------------
+
+how to use with else 
+
+now in our 
+
+deploment file look like 
+
+          {{- if eq .Values.container1.enabled true -}}
+          {{- include "container1" .  | nindent 10 }}  
+          {{- else }}
+          {{- include "container2" .  | nindent 10 }}  
+          {{- end -}}  
+----------------
+And _helpers.ptl 
+
+{{- define "container1" -}}
+- name: newcontainer 
+  image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+  ports:
+    - name: https
+      containerPort: 80
+      protocol: TCP 
+{{- end  -}}  
+
+{{- define "container2" -}}
+- name: newcontainer2 
+  image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+  ports:
+    - name: https
+      containerPort: 80
+      protocol: TCP 
+{{- end  -}}  
+
+-----------
+and in values file 
+
+container1:
+  enabled: false
+
+
+------------------------------
+
+More information on flow control with Helm:
+
+https://helm.sh/docs/chart_template_guide/control_structures/
+
+
+Operators you can use with Helm:
+
+https://helm.sh/docs/chart_template_guide/functions_and_pipelines/#operators-are-functions
+
+
+
+====================================================================================
+
+
+configuretion for help chartmuseum 
+
+helm repo add chartmuseum https://chartmuseum.github.io/charts
+
+helm pull chartmuseum/chartmuseum
+
+tar -xvf chartmuseum-3.7878.tar     # give a file name and unzip it 
+
+make sure in values.yaml api is should be desable look like below 
+
+disable DISABLE_API: false
+
+make service as NodePort and give ports number where you want service to be accessblei use 30005
+
+desable ther network policy by commite it like below 
+
+#externalTrafficPolicy: Local
+
+than install the chart 
+
+cd main 
+
+helm install template .
+
+now you can see the your chartmuseum is deployed on one of your node take ip of that node and port what we used 30005 
+
+https://192.68.23.10:30005/
+
+now we have to add this as our chartmuseum and push our chart 
+
+helm repo add my-repo https://192.68.23.10:30005/
+
+helm repo list 
+
+helm repo update 
+
+now how to packge chart to get ready to push cd in that folder and give a below cmd 
+
+helm packge . 
+
+now you can see application-version.tar 
+
+curl --data-binary "@application-version.tar"  https://192.68.23.10:30005/api/charts 
+
+helm repo update 
+
+helm search repo app      # here app is your chartname(application-version.tar) but in your case it could be other 
+
+how to install this chart now 
+
+helm install my-repo/application-1 --generate-name 
+
+to remove a chart i am unstalling app chart 
+
+heml unstall app    
+
+
+=====================================================================================
+
+how to install grafana with helm 
+
+first we have to install google API check letest one 
+
+helm repo add stable https://charts.helm.sh/stable
+
+helm repo update
+
+helm search repo grafana
+
+helm install stable/grafana
+
+now you can access you service if it's deployed on clusterIP edit to nodePort 
+
+=====================================================================================
+
+
+***********************************************************************************
+kubernetes security:
+***********************************************************************************
+
+github link: https://github.com/killer-sh
+
+
+
+This is the code that make your container more secure 
+
+securityContext:
+    allowPrivilegeEscalation:false
+    runAsNonRoot:true
+    capabilities:
+     drop:
+        -ALL
+    readOnlyRootFilesystem:true
+
+========================================================================
+
+snyk is good too; to scan the your k8s yaml files 
+
+the cmd look like this:
+
+snyk iac test your_deploment.yaml 
+
+more IMP check CVE page and keep your cluster update with patch and all 
+
+refer link when you want to know more about harding 
+
+https://media.defense.gov/2022/Aug/29/2003066362/-1/-1/0/CTR_KUBERNETES_HARDENING_GUIDANCE_1.2_20220829.PDF
+
+====================================================================================
+
+multipul leyar of security is allway good 
+
+Least privileges 
+
+limiting the attack surface 
+
+as you know k8s also use cert 
+
+api server contain server cert and scheduler, control manager , kubectl has clinet cert 
+
+kubectl and ETCD also contain server cert for few comunication with API server it contain clinet cert 
+
+
+you can find this cert in below path 
+
+/etc/kubernetes/pki 
+
+scheduler cert in below path same way we have others services certificates in same path 
+
+/etc/kubernetes/scheduler.conf
+
+====================================================================================
+
+linux kernal has many namespaces 
+
+PID 
+Mount 
+Network
+User 
+
+when we use containerd we should use podman and crictl 
+
+in most cases you can just replce word docker to podman if you have podman install on your system 
+
+in update version of k8s you have circtl so docker ps will never show you result you have to use circtl 
+
+circtl ps 
+
+you can find sock file in below location that using containerd
+
+/ect/circtl.yaml 
+
+to see the running process in container
+
+docker exec container_naem ps aux 
+
+same way you can run any cmd on docker 
+
+docker exec container_naem cmd 
+
+if you have to identical pods and you want to use same PID for both while creating second container you should give that contain name 
+
+docker run --name c2 --pid=container:c1 -d image_name -sh -c 'cmd'
+
+====================================================================================
+
+Network security policy:
+
+bydefault every pos can access any pod, it's not isolated from each others
+
+what happen in network security policy is we use podselector and our policy applyable to thos pod who has same podselector
+
+policy can egress or ingress so when we use any policy it's only comunication thos pod whihc in your policy all bydefault roles get stop 
+and you are no longer be accessble from other pod 
+
+the network selection can be applyable on podselector, namespaces or IPBlock 
+
+policy my look like this 
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: test-network-policy
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      role: db
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 172.17.0.0/16
+            except:
+              - 172.17.1.0/24
+        - namespaceSelector:
+            matchLabels:
+              project: myproject
+        - podSelector:
+            matchLabels:
+              role: frontend
+      ports:
+        - protocol: TCP
+          port: 6379
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/24
+      ports:
+        - protocol: TCP
+          port: 5978
+
+
+Note : if you have multipul policy than it's like union of all the policy can applicable and order dosen't matter 
+
+The best practice is to have default deny policy and the add any allow policy as per requerment 
+
+Below is the policy for default deny
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: my-default-deny
+  namespace: default
+spec:
+  podSelector:
+    matchLabels: {}         # this means everything 
+  policyTypes:
+    - Ingress
+    - Egress
+
+If we don't have any allow or deny roles means it's going deny bydefault
+
+once you apply this policy it will going to block  all network traffices in pod and out 
+
+below is our first Egress policy which will be applicable for frontend to --> backend traffices
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: frontend
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+     run: frontend
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+             matchLabels:
+               run: backend
+
+Note: after applyen this policy still traffices will never flow as we wanted so we need to all traffices from backend side too
+so we have to create a ingress on backend pods 
+
+so our ingress policy can be looks like below 
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+     run: backend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+             matchLabels:
+               run: frontend
+
+
+now you can try to curl from frontend to backend 
+
+kubectl exec frontend -- curl backend
+
+OHHHH it's still not working why becouse we need a DNS resolution and our default deny block our DNS also so we have to use ip 
+to get the IP use 
+
+kubectl get pod --show-labels -o wide
+
+and if we wan to use DNS than we have to allow the port 53 egress in default policy so our default-deny policy as below
+
+# deny all incoming and outgoing traffic from all pods in namespace default
+# but allow DNS traffic. This way you can do for example: kubectl exec frontend -- curl backend
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny
+  namespace: default
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  - Ingress
+  egress:
+  - ports:
+    - port: 53
+      protocol: TCP
+    - port: 53
+      protocol: UDP
+
+
+=====================
+
+when we use namespaces to select the we should use labels for namespaces 
+
+---------------------------------
+
+GCP cli starting 
+
+gcloud auth login
+
+gcloud config set project cp-sandbox-amardip-sakp036
+
+====================================================================================
+
+Ingress
+
+loadblancer also use  nodePort service and nodeport alsow use clusterIP servers underhood as yor know clusterIP forword 
+the traffic on the basess of pod labels
+
+we have created a nginx ingress by apply below cmd 
+
+kubectl apply -f https://raw.githubusercontent.com/killer-sh/cks-course-environment/master/course-content/cluster-setup/secure-ingress/nginx-ingress-controller.yaml
+
+then we create a ingress for service1 and service2
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: secure-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx # newer Nginx-Ingress versions NEED THIS
+  rules:
+  - http:
+      paths:
+      - path: /service1
+        pathType: Prefix
+        backend:
+          service:
+            name: service1
+            port:
+              number: 80
+
+      - path: /service2
+        pathType: Prefix
+        backend:
+          service:
+            name: service2
+            port:
+              number: 80
+
+now we are going create 2 pod and 2 service
+
+k run nginx --image=httpd
+
+k run httpd --image=httpd
+
+k expose pod nginx --port 80 --name service1
+
+k expose pod httpd --port 80 --name service2
+
+once it's created you can test it by 
+
+http://node-publiceIP:port/path_of-ingress
+
+http://35.208.131.185:32644/service2
+http://35.208.131.185:32644/service1
+
+you can use clusterIP if you want to ingress for internal application 
+
+i used a nodepaort service here but can edit it and make it to loadbalencer
+
+====================================================================================
+now we are securing our ingress
+====================================================================================
+
+note when you have self-sing certificates and you want to culr you have to use -k to access slef-sing cert 
+
+curl https://35.208.131.185:30506/service1 -k
+
+
+id if what to see how the trafice going on use -k with v you can view more detail by useing verbos mode in aany curl request 
+
+curl http://35.208.131.185:32644/service2 -v 
+
+curl https://35.208.131.185:30506/service1 -kv 
+
+as we see it's showing fake certificates so we are going to create our own self sing certificates 
+
+openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes
+
+now we have certificates and key file 
+
+now useing this certificates and key we are going to create a secrets the cmd is below 
+
+kubectl create secret tls your-secrets-name --cert=cert.pem --key=key.pem 
+
+kubectl create secret tls secure-ingress --cert=cert.pem --key=key.pem 
+
+if you want create just file use below cmd cop out put and sve in file and apply it 
+
+kubectl create secret tls secure-ingress --cert=cert.pem --key=key.pem -oyaml --dry-run
+
+your file will look like this 
+
+apiVersion: v1
+data:
+  tls.crt: dsfjksfdsygudsfysdfdfiufuisdfishfiisfhisdfh==
+  tls.key: sfdjsdfkjhdsf7ewr8ywerhsdjhfdsjhfd=
+kind: Secret
+metadata:
+  name: secure-ingress
+type: kubernetes.io/tls
+====================================================================================
+
+now we have to add tls section in our service ingress file 
+
+so we are going to add add tls block in spec section 
+
+  tls:
+  - hosts:
+      - secure-ingress.com
+    secretName: secure-ingress
+  ingressClassName: nginx 
+
+and in rules add host  
+
+  rules:
+  - host: secure-ingress.com
+
+then our ingress will look like this 
+====================================================================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: secure-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  tls:
+  - hosts:
+      - secure-ingress.com
+    secretName: secure-ingress
+  ingressClassName: nginx # newer Nginx-Ingress versions NEED THIS
+  rules:
+  - host: secure-ingress.com
+  - http:
+      paths:
+      - path: /service1
+        pathType: Prefix
+        backend:
+          service:
+            name: service1
+            port:
+              number: 80
+
+      - path: /service2
+        pathType: Prefix
+        backend:
+          service:
+            name: service2
+            port:
+
+====================================================================================
+
+make this changes and appled it 
+
+we ahev create a certificates for domain but we are htting on ip then you have to add this in your DNS server 
+
+if you have local than you have to add in /etc/hosts file or you can use this curl 
+
+curl https://domain-name:port/path -kv --resolve domain:port:publicIP-of-node
+
+curl https://secure-ingress.com:30506/service1 -kv --resolve secure-ingress.com:30506:35.208.131.185
+
+
+====================================================================================
+CIS bechmark:
+====================================================================================
+
+This is used to check k8s cluster security, it provide default security rules buut if u have aws, gcp cluster they alreday used this 
+we have to download the PDF guide from the CIS bechmark web page it's attached in resource session but for update one you can download
+
+in PDF you can see there is cmd to check configretion and apply a cmd to fix it but this can we automate 
+
+basicly we are going use github repo in whihc we are using docker cmd to check all paramiter 
+
+# how to run
+https://github.com/aquasecurity/kube-bench/blob/main/docs/running.md
+
+
+# run on master, you can change the version as per your cluster 
+docker run --pid=host -v /etc:/etc:ro -v /var:/var:ro -t aquasec/kube-bench:latest run --targets=master --version 1.22
+
+once you run the above cmd you can see the result of it and the nuber so you can see the fix of that topic in same screen
+or u can reffer the pdf guide cmd for same topic number 
+
+# run on worker you can change the version as per your cluster 
+docker run --pid=host -v /etc:/etc:ro -v /var:/var:ro -t aquasec/kube-bench:latest run --targets=node --version 1.22
+
+once you run the above cmd you can see the result of it and the nuber so you can see the fix of that topic in same screen
+or u can reffer the pdf guide cmd for same topic number 
+
+https://www.youtube.com/watch?v=53-v3stlnCo
+
+This is for docker , we also have GCP bancemark 
+
+https://github.com/docker/docker-bench-security
+
+
+when we can to ckeck sha code is current or not for security erson is this filed get edited or somthing that can be veryfi by check 
+sha code 
+
+This is url we are doloing test file for checking sha code here we can see shacode is sha512 
+
+https://github.com/kubernetes/kubernetes/blob/master/CHANGELOG/CHANGELOG-1.26.md#server-binaries-1
+
+wget https://dl.k8s.io/v1.26.0/kubernetes-server-linux-amd64.tar.gz
+
+tar -xvf kubernetes-server-linux-amd64.tar.gz
+
+now we have .tar.gz download in our system you can see in webside it's shwoing sha512 so we have create sha512sum for download file to check 
+
+sha512sum /kubernetes/server/bin/kube-apiserver  
+
+it give you output like this 
+
+55de8adfe4d98826cf5f55007b8dbb63cd42fc898b399cd2c74d6c4818f2fbad1de4bd7cba2a94f8edc5a13a6297816691e62ffd0113428d23b8e7592d9d2eb6  kubernetes-server-linux-amd64.tar.gz
+
+it's  sha code you can comper it with your webside code or you can copy past bot in same file line by line and check 
+
+that cat file name and | uniq 
+
+cat mysha | uniq
+
+Now it's get really intressting we are gong compare API server binarier runing inside ther container what we have download previously 
+
+now we are extracing the tar.gz 
+
+tar xvf kubernetes-server-linux-amd64.tar.gz 
+
+after extraction cd /kubernetes/server/bin    and check a version 
+
+./kube-apiserver --version    # make sure it's same version you are cluster on 
+
+k get pod kube-apiserver-controlplane -n kube-system -o yaml | grep image     # to see the running kube api servers 
+
+sha512sum /kubernetes/server/bin/kube-apiserver         # to see sha of kube-apiserver whihc is  downloaded 
+
+now we want to see the sha512sum for installed kube-apiserver 
+
+k get pod  kube-apiserver-controlplane  -n kube-system 
+
+k -n  kube-system  exec -it kube-apiserver-controlplane --sh    # but for security perpose we don't have any shell in apiserver container
+
+now we want to access ther apiserver container now we dont have docker so we use circtl but if you have docker than u can use docker 
+
+crictl  ps | grep api     # if containerd install 
+
+docker ps | grep api      # if docker install  
+
+you can see the output 
+
+111c4cfce5d12       a31e1d84401e6       About an hour ago   Running             kube-apiserver            2                   1f33473c9daed       kube-apiserver-contro
+
+see means the container is running on our host means you can access it's pid by bloe cmd you can see pid 
+
+ps -aux | grep kube-apiserver     # the output is below 
+
+root       32152  4.3 15.0 1117860 306024 ?      Ssl  14:00   0:15 kube-apiserver --advertise-address=172.30.1.2 --allow-privileged=true --authorization-mode=Node,RBAC --client-ca-file=/etc/kubernetes/pki/ca.crt --enable-admission-plugins=NodeRestriction --enable-bootstrap-token-auth=true --etcd-cafile=/etc/kubernetes/pki/etcd/ca.crt --etcd-certfile=/etc/kubernetes/pki/apiserver-etcd-client.crt --etcd-keyfile=/etc/kubernetes/pki/apiserver-etcd-client.key --etcd-servers=https://127.0.0.1:2379 --kubelet-client-certificate=/etc/kubernetes/pki/apiserver-kubelet-client.crt --kubelet-client-key=/etc/kubernetes/pki/apiserver-kubelet-client.key --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname --proxy-client-cert-file=/etc/kubernetes/pki/front-proxy-client.crt --proxy-client-key-file=/etc/kubernetes/pki/front-proxy-client.key --requestheader-allowed-names=front-proxy-client --requestheader-client-ca-file=/etc/kubernetes/pki/front-proxy-ca.crt --requestheader-extra-headers-prefix=X-Remote-Extra- --requestheader-group-headers=X-Remote-Group --requestheader-username-headers=X-Remote-User --secure-port=6443 --service-account-issuer=https://kubernetes.default.svc.cluster.local --service-account-key-file=/etc/kubernetes/pki/sa.pub --service-account-signing-key-file=/etc/kubernetes/pki/sa.key --service-cluster-ip-range=10.96.0.0/12 --tls-cert-file=/etc/kubernetes/pki/apiserver.crt --tls-private-key-file=/etc/kubernetes/pki/apiserver.key
+
+now we are accessing it's filesystem  by ls /proc/PID_of_last_CMD/root/ here we have 32152
+
+ls /proc/32152/root/
+
+Now find where is api-server 
+
+find /proc/32152/root/ | grep kube-api      # this is will give excat path /proc/32152/root/usr/local/bin/kube-apiserver
+
+sha512sum /proc/32152/root/usr/local/bin/kube-apiserver   # get the sha code and compare with other that you have download
+
+====================================================================================
+Conclusion: we haved check is there install apiserver binner get modifyed or not 
+====================================================================================
+
+
+
+
+====================================================================================
+RBAC:
+====================================================================================
+Role base access control :
+
+In kubernetes RBAC we onlly specify allow role rest other bydefault deny 
+
+in k8s we have resource some are namespace bases resources and some are cluster base resource
+
+k api-resources --namespacde=true       # list namespace bases resources
+
+k api-resources --namespaced=fales     # # list cluster bases resources
+
+for resource whihc is spacefic to namespase you will have to role --- can be one namespace
+but the resources whihc in not spacefic to NS we have to create a clusterRole  ---  for all or multipul namespaces or anyother resource 
+
+and role and clusterRole is defined the set of permission like 
+Can edit pod 
+can read serverices 
+can'r edit services 
+
+Than we have roleBinding And clusterROleBinding this defined who will get this permission 
+in can use anykind of selector roleNinding can use with role and clusterRole but clusterROleBinding only work with clusterRole
+
+Role:
+---------------
+metadata:
+  namespace: test
+  name: secrets-manager
+rules:
+- apiGroups: [""]   # means all 
+  resources: ["secrets"]
+  verbs: ["get","watch","list"]
+
+
+Or 
+-------------------
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kube-proxy
+  namespace: kube-system
+rules:
+- apiGroups: ""
+  resourceNames: kube-proxy
+  resources: configmaps
+  verbs: get
+
+
+
+CLusterRole: it excat same sa role we just don't have a namespace
+---------------
+metadata:
+  name: secrets-manager
+rules:
+- apiGroups: [""]   # means all 
+  resources: ["secrets"]
+  verbs: ["get","watch","list"]
+
+
+conserver you have role for get or list and we have clusterRole on youer names for delete and update than finle output will be 
+get, list, update and delete 
+
+
