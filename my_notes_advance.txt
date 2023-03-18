@@ -851,3 +851,2953 @@ conserver you have role for get or list and we have clusterRole on youer names f
 get, list, update and delete 
 
 
+====================================================================================
+
+Now we are creating namespace inwhich we have user jane who has secret manager access but in NS A he has get access and in B NS get list 
+
+we have create a NS by below cmd 
+
+k create ns na-a 
+k create ns ns-B
+
+This will give yaml output we have select --dry-run=client see clinet side output means it will remove unnecessery data like timestan and UID 
+
+if you remove -oyaml than it will and never give you output with all that that is not requer 
+
+k -n ns-a create role secret-manager --verb=get --resource=secrets -oyaml --dry-run=client 
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  creationTimestamp: null
+  name: secret-manager
+  namespace: ns-a
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+
+you can store this output in yaml file and than apply it 
+
+now we are going to bind a roleBinding for user jane 
+
+ k -n ns-b create rolebinding secrets-manager --role=secret-manager --user=jane -oyaml --dry-run=client 
+
+ apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  creationTimestamp: null
+  name: secrets-manager
+  namespace: ns-b
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: secret-manager
+subjects:
+- apiGroup: rbac.authorization.k8s.io
+  kind: User
+  name: jane
+
+
+now we are creating a role for ns-b with get and list permission 
+
+k -n ns-b create role secret-manager --verb=get --verb=list  --resource=secrets -oyaml --dry-run=client 
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  creationTimestamp: null
+  name: secret-manager
+  namespace: ns-b
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+
+
+nowe we have to create rolebinding
+
+k -n ns-a create rolebinding secrets-manager --role=secret-manager --user=jane -oyaml --dry-run=client
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  creationTimestamp: null
+  name: secrets-manager
+  namespace: ns-a
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: secret-manager
+subjects:
+- apiGroup: rbac.authorization.k8s.io
+  kind: User
+  name: jane
+
+
+auth can-i -h       # this is good cmd to check do you have access and can be use like below 
+
+k -n ns-b auth can-i -h                                # see all cmds for can 
+k -n ns-b auth can-i create pods --as jane # no
+k -n ns-b auth can-i get secrets --as jane # yes
+k -n ns-b auth can-i list secrets --as jane # yes
+
+k -n ns-a auth can-i list secrets --as jane # No
+k -n ns-a auth can-i get secrets --as jane # yes
+
+k -n default auth can-i get secrets --as jane #no
+
+k  auth can-i list secrets/bootstrap-token-kgo6xd -n kube-system   # you want see can I do spacefic task on spacefic resource -n namespace
+
+resource/resource-name
+
+k auth can-i delete pod/mytest-pod -n default       # it will check can id delete mytest-pod in default ns 
+
+k auth can-i list pod/mytest-pod  --all-namespaces      # --all-namespaces    to see can do in all namespace
+
+====================================================================================
+
+Now we are goin to create role jane whihc clusterrole that  has delete access deploment all namepse 
+and jim has only delete access on ns-b 
+
+create a clusterRole with delete deploment access
+
+create clusterrole deploye-delete --verb delete --resource=deployment -oyaml --dry-run=client
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  creationTimestamp: null
+  name: deploye-delete
+rules:
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  verbs:
+  - delete
+
+
+Create a clusterrolebinding with user janes 
+
+k create clusterrolebinding deploy-deleter --user=jane --clusterrole deploye-delete -oyaml --dry-run=client
+
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  creationTimestamp: null
+  name: deploy-deleter
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: deploye-delete
+subjects:
+- apiGroup: rbac.authorization.k8s.io
+  kind: User
+  name: jane
+
+
+when you cant to give access to only one cluster in this case we have to user rolebinding for that clusterrole
+
+k create rolebinding ns-deploy-delete --user=jim --clusterrole deploye-delete  -n ns-a
+
+use -oyaml --dry-run=client to see the yaml output 
+
+you can test jane has access to delete the deploment in all namespace
+
+k auth can-i delete deployment  --all-namespaces --as jane
+or 
+
+k auth can-i delete deployment  --as jane
+
+to check the jim has access to delete a deploment in all nsamese 
+
+# test jane
+k auth can-i delete deploy --as jane # yes
+k auth can-i delete deploy --as jane -n ns-a # yes
+k auth can-i delete deploy --as jane -n ns-b # yes
+k auth can-i delete deploy --as jane -A # yes
+k auth can-i create deploy --as jane --all-namespaces # no
+
+
+
+# test jim
+k auth can-i delete deploy --as jim # no
+k auth can-i delete deploy --as jim -A # no
+k auth can-i delete deploy --as jim -n ns-a # yes
+k auth can-i delete deploy --as jim -n ns-b # no
+
+
+====================================================================================
+
+Service Account and Normale user 
+
+For Normale user we can need certificate which sing with same authrati which has cert for k8s clusterIP
+in This certificates we have same name like jim or jane
+
+now we are creating cert for user 
+
+create CSR then sign CSR using k8s API and user cert + key to connect ther cluster 
+
+openssl genrsa -out jane.key 2048       # generate a key 
+
+openssl req -new -key jane.key -out jane.csr # only set Common Name = jane it's 8 step use jane as user rest all can be blank 
+# create certificate sing request  now we have jane.key and jane.csr
+
+
+# create CertificateSigningRequest with base64 jane.csr
+
+k8s reference url 
+https://kubernetes.io/docs/reference/access-authn-authz/certificate-signing-requests
+
+cat jane.csr | base64 -w 0
+
+This will give jane.csr in base64 we have use this whe create a CertificateSigningRequest 
+
+nowe need this template in which we only chnages requests key and put our jane.cs base64 output 
+
+apiVersion: certificates.k8s.io/v1
+kind: CertificateSigningRequest
+metadata:
+  name: jane      # give user name same what you create in certificate
+spec:
+  request: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURSBSRVFVRVNULS0tLS0KTUlJQ21UQ0NBWUVDQVFBd1ZERUxNQWtHQTFVRUJoTUNRVlV4RXpBUkJnTlZCQWdNQ2xOdmJXVXRVM1JoZEdVeApJVEFmQmdOVkJBb01HRWx1ZEdWeWJtVjBJRmRwWkdkcGRITWdVSFI1SUV4MFpERU5NQXNHQTFVRUF3d0VhbUZ1ClpUQ0NBU0l3RFFZSktvWklodmNOQVFFQkJRQURnZ0VQQURDQ0FRb0NnZ0VCQU5laUZ2cFluYXpEY0tKczdpMXQKdTdyQ0pDZVRxcDBFVlBqNENjU1kyQkhGTklBQXArK29ZNTdQeTJyK1dtSDRHZ0xYNEZlcTJZR0NvTmx5ZXZyRApzVGZMajEyQklKSithWTlZQXU0MisvM1lSbGNTdDMzZFJudTZaNEN6ek5za3RoZzlvY0JjcU5xMkUvZlQySCtuCjZjYWhIWmszUEZtUElDZzJGMjNOeTdVWVNrcTVaVXM4SXBJdzNubEphRmhwaFZrV2xWRXYwd1Y5bXpCcXlBWWsKT2dyRDNjV21MRko3QXZxZUJLbnlqa2JCYVJzSUozWXlRdGR4c2NvSFd5K0d3TFhtODArMjd2YndNdDJrTmdSQwp6TmoyOEIvOWg3eDcyMUJDUG5FU1ZtbitFOGQvK3pKNHlGMUxYeldqY1Y4Rnd1ekd0N0F0K1pkdkk5dWh0ZHNnCmVFRUNBd0VBQWFBQU1BMEdDU3FHU0liM0RRRUJDd1VBQTRJQkFRREhMN2w5dHJISnRXT3V5cGJPcVdUaG40eGcKMjRJcjZwckVUNHlYVDJHT3BXbkdPZmFjOTA5SXBBd09USE1yZ1FRRElwY2ZaN2ppS3Z4aVI0UndiYnQ2cEtIVApWOGZ4a2lBSXJ1V0ZnZWowZFBVanJZeWdCdTZ5Wk1JVXZHMnhsQUtXR2REbVFJZFBBZ2J3ZFl3WVlZQ2svVHJ1Cm5IWGU3blFWc1RPaCtQeXVEd0lpT1l4cjVTUXRYb3dXblJUM1hrYWNGQUI0UmxMWkQxRG1CeXFVcG8raTBZZ1AKaUVVaWhBSks2Qkh2dG9TQVcxMEsrNVhCUEthSERNdyt0NUVYWkQ1RGpOdVh0Ry9URzBXOHNQRGFrZjIxb2lmSQplQVJYaHcyaEtzWUxOVll2N2p5OThNaFFUOC9hbCtBaDdqWUQzbW1GQmtQMlgwU1IzVGtUQ1ZYVkVRT2UKLS0tLS1FTkQgQ0VSVElGSUNBVEUgUkVRVUVTVC0tLS0tCg==
+  signerName: kubernetes.io/kube-apiserver-client
+  # expirationSeconds: 86400  # one day you can give how long you wnat till time 
+  usages:
+  - client auth
+
+
+Save this file as certsingrequest.yaml  and apply it 
+
+k apply -f certsingrequest.yaml 
+
+now we have check csr in k8s 
+
+k get csr       # you can see result like Pending like below 
+
+jane        80s   kubernetes.io/kube-apiserver-client           kubernetes-admin           <none>              Pending
+
+now we have approve this csr  that can be downe like below 
+
+ k certificate approve jane 
+
+now you can see result like below 
+
+jane        3m36s   kubernetes.io/kube-apiserver-client           kubernetes-admin           <none>              Approved,Issued
+
+When our certsingrequest is approve you can see certificate in status of our kubernates csr we can see like below 
+
+k get csr jane -oyaml
+
+mean what we requetesd we got that certificate
+
+copy that certificate and decode it base64  and save it as username.crt 
+
+echo "our_cert" | base64 -d > jane.crt
+
+Now we have to use this cert and key to connect to k8s cluster 
+
+k config view       # to see KUBECONFIG 
+
+
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: DATA+OMITTED
+    server: https://172.30.1.2:6443
+  name: kubernetes
+contexts:
+- context:
+    cluster: kubernetes
+    user: kubernetes-admin
+  name: kubernetes-admin@kubernetes
+current-context: kubernetes-admin@kubernetes
+kind: Config
+preferences: {}
+users:
+- name: kubernetes-admin
+  user:
+    client-certificate-data: DATA+OMITTED
+    client-key-data: DATA+OMITTED
+
+
+in abowe code we have kubernetes-admin user and cluster kubernetes
+
+so we have to create one contexts and user for james that can be done by below cmd 
+make sure have key and cetr in main dir from where you run cmd 
+
+k config set-credentials jane --client-key=jane.key --client-certificate=jane.crt
+
+# after runing the this cmd successfuly you can see md like User "jane" set.
+
+k config view       # you can see user jane is set alsow see path of key and crt file 
+
+if we want to restice cert and key like defualt one you can user --embed-certs flag at end 
+
+k config set-credentials jane --client-key=jane.key --client-certificate=jane.crt --embed-certs 
+
+k config view       #see the chnages 
+
+Now  we want to add the context so use below cmd chnages use and cluster name as per you 
+
+k config set-context jane --cluster=kubernetes --user=jane
+
+k config get-contexts       # to see current context you can see * at front of select recode 
+
+to use jame or to select as jane use below cmd 
+
+k config use-context jane
+
+kubectl config set-context --current --namespace=my-namepse      # to set any namepse as defualt
+
+k config get-contexts         # see the current context
+
+You may be not able to perfrom any task because we have RBAC we need to create new role that only you will good 
+what we create in last call for jane and jim 
+
+# set confige cmd in one go 
+k config set-credentials jane --client-key=jane.key --client-certificate=jane.crt
+k config set-context jane --cluster=kubernetes --user=jane
+k config view
+k config get-contexts
+k config use-context janekubectl config set-context --current --namespace=my-namepse 
+
+
+====================================================================================
+cluster harding
+====================================================================================
+SA Restriction 
+
+We have see and create User account for Normale user but now we are going this Service account in this 
+
+We are going to create a SA and used it in pod 
+
+user SA token to connect k8s api from inside of the pod 
+
+k get sa               to see a SA in default namepse in this cmd you will assoseted secret  
+
+k get sa -A           to see a SA in default namepse 
+
+k create sa myservicaccoun      # to create a new service account 
+
+how anyone can use this service accont for this we need token for this SA 
+
+k create token myservicaccoun     # to create a token for SA(myservicaccoun) this will give you token as output 
+
+if you have token and you want to see who create this token and for which SA you can see here on https://jwt.io
+
+https://jwt.io      # to see token context 
+
+
+Below cmd will give you basice for pod yaml if add dry if you remove it will create but now we need yaml to add SA 
+
+and we are going to add service account under sapc of yaml 
+
+if you non exist SA in this pod deffination it will gove yo error 
+
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: accessor
+  name: accessor
+spec:
+  serviceAccountName: myservicaccoun
+  containers:
+  - image: nginx
+    name: accessor
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+
+
+after creating pod you exec pos and check where it's mounted 
+
+k exec -it accessor /bin/bash 
+
+mount | grep ser 
+
+tmpfs on /run/secrets/kubernetes.io/serviceaccount type tmpfs (ro,relatime,size=1928540k)
+
+cd /run/secrets/kubernetes.io/serviceaccount
+
+you can see ca.crt  namespace  token file 
+
+you can see token 
+
+and this token is the same what we created 
+
+to see the env for k8s 
+
+env | grep KUB 
+
+see the HOST ip 
+
+curl https://host-ip -k 
+curl https://10.96.0.1 -k 
+
+you will see forbidden: User mean you don't have access 
+
+curl https://10.96.0.1 -k  -H "Authorization: Bearer token" if  you don't want  to past token you can use below 
+
+curl https://10.96.0.1 -k  -H "Authorization: Bearer $(cat token) "
+
+now you can see it's still forbidant but we are using our service account because we used a SA token  
+
+to close forbidant issue we have to add RABC role for this account 
+
+In all case our pod create with a default SA and  in many case we doesn't need pod to talk to k8s API 
+
+so disable the mount of the serviceAccount token in pod detailed document below 
+
+https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account
+
+while creating a SA we have to add below paramiter after metadata level 
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: build-robot
+automountServiceAccountToken: false
+
+if you want to restirct any pod to use SAtoken you have to modify pod deffination like below 
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-pod
+spec:
+  serviceAccountName: build-robot
+  automountServiceAccountToken: false
+
+if you have a create any service using file and want change in file and apply that 
+
+k apply -f pod.yaml replce --force 
+
+limit service account using RBAC 
+
+clusterRole  >  clusterROleBinding  > ServiceAccount
+
+bydefault all the pod use default SA nad that doesn't has any permission 
+
+k auth can -i delete secret --as system:serviceaccount:ns_name:sa 
+
+k auth can -i delete secret --as system:serviceaccount:default:accessor 
+
+to create a clusterrolebinding for accessor
+
+k create Clusterrolebinding accessor --clusterrole edit --serviceaccount ns_name:sa
+
+k create Clusterrolebinding accessor --clusterrole edit --serviceaccount default:accessor
+
+you can check do we have acces 
+
+k auth can -i delete secret --as system:serviceaccount:default:accessor 
+
+reference document:
+
+https://kubernetes.io/docs/reference/access-authn-authz/service-accounts-admin
+
+https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account
+
+====================================================================================
+
+Restrict K8s API Access:
+
+authentication  authorization admission 
+
+authentication      = who are youe 
+
+authorization       = are you alloud do you have access 
+
+connect to API in different way 
+
+restrict API in different way 
+
+API request can be allowed on below tied 
+
+A normal user 
+A serviceAccount
+A anonymouse user 
+
+
+-----------
+IMP Restriction
+
+don't allow anonymouse user 
+Close insecure port 
+Dont expose API server to outsider 
+restrict access from node to API 
+prevent unathorized access(RBAC)
+prevent pod from accessing a API 
+only allow sertan IP address use firewall 
+
+############################################################################
+Be very mindfull when you're doing somting in anonymouse access APIserver
+############################################################################
+
+
+To syntext to enable or disable API anonymouse access 
+
+kube-apiserver --anonymouse-auth=true or can false 
+
+since k8s 1.6 k8s apiserver anonymouse access is enabled bydefault if authorization mode is alwaysAllow
+
+if we have Attribute-Based Access Control(ABAC) like Okta or RABC then it's not expose bydefault 
+
+you can see all the configretion for API in below file 
+
+vi /etc/kubernetes/manifests/kube-apiserver.yaml 
+
+in vi cmd mode search for anonymouse by typing /anonymouse
+
+if we not able to find it than it's  not good also make sure we have RABC you can see entry for that like below 
+
+- --authorization-mode=Node,RBAC
+
+you can duble check are you abale connect with k8s API anonymouse by below cmd 
+
+curl https://k8s-master-ip:6443 -k      # we used -k to acept a self sign authentication
+
+curl https://localhost:6443 -k      # of youre on master you will get forbidant error but youre request is acepted 
+
+{
+  "kind": "Status",
+  "apiVersion": "v1",
+  "metadata": {},
+  "status": "Failure",
+  "message": "forbidden: User \"system:anonymous\" cannot get path \"/\"",
+  "reason": "Forbidden",
+  "details": {},
+  "code": 403
+
+}
+
+This is not good youre request is acepted means anonymous use can access your API 
+
+
+now let's make a chnages in kube-apiserver.yaml  to don't allow anonymous request 
+
+we are going to add - --anonymous-auth=false 
+
+now wait untill youre chnages take a palce and pod should comeup you can check kube-apiserver pod are come up or by below cmd 
+
+k get pod -n kube-system | grep api
+
+when the pod come up you try to access API server anonymously 
+
+curl https://localhost:6443 -k 
+
+{
+  "kind": "Status",
+  "apiVersion": "v1",
+  "metadata": {},
+  "status": "Failure",
+  "message": "Unauthorized",
+  "reason": "Unauthorized",
+  "code": 401
+}
+
+you will get failure and reason is Unauthorized with 401 not a 403 
+
+Note: we have to enable it's requer for APIserver for it's liveness perpose if you have any issue in config you will never able to run kubectl cmd 
+
+Note: v1.20 we don't have insecure access is block bydefault
+
+Mean the above security practice is only requer when you are below to v1.20 
+
+kube-apiserver --insecure-port=8080       # this need add in kube-apiserver.yaml if youre below  v1.20 
+means we are calling API server without https without certificate 
+
+it's without certificate on 8080 means http port and not even authenticat and authorization happen during this process 
+
+Now do the curl request  you will get full access 
+
+curl http://localhost:8080 -k 
+
+remidaction set port 0 instend of 8080 in this parramitor  kube-apiserver --insecure-port=8080  
+
+k config view           # This will show you current config 
+
+k config view --raw     # This will show you ckube config with certificate as same as .kube/config
+
+In above cmd take cert authenticat data and decode it and save it as ca 
+
+echo "cert-auth-data" | base64 -d  > ca
+
+do a same for client cert data 
+
+echo "client-cert-data" | base64 -d  > crt
+
+same for clinet key data 
+
+echo "client-key-data" | base64 -d  > key
+
+now we ahev Key, crt and ca 
+
+Now we r testing r we able to comunication with API server with cert auth cert that we have store in ca file master IP you can see in k config view 
+
+curl https://172.30.1.2:6443 --cacert ca
+
+we are able to connect it you can see below output 
+
+{
+  "kind": "Status",
+  "apiVersion": "v1",
+  "metadata": {},
+  "status": "Failure",
+  "message": "forbidden: User \"system:anonymous\" cannot get path \"/\"",
+  "reason": "Forbidden",
+  "details": {},
+  "code": 403
+}
+
+but see it's anonymous we have to pass the cert and key file 
+
+ curl https://172.30.1.2:6443 --cacert ca --cert crt --key key      # now you are able to see all the API 
+
+
+
+-----------
+How we expose API for outside 
+
+k edit svc kubernetes     # and chnages service type from ClusterIP to NodePort
+
+k get svc         # and see the node port and on this port you can access API 
+
+from outside curl https://node-ip:nodepaort -k      # you will see it's forbidant due anonymous user
+
+now copy .kube/conf file or k config view     # this output we have to copy and save conf(u can give any name ) from where you want to connect 
+
+and on this system you have to make chnages in conf file you have add node-ip and nodeport in front of sever https://node-ip:nodepaort like this
+becouse you have kubernates service expose on node port  
+
+you can pass other kube condif file by specify --kubeconfig conf(u can give any name )
+
+now try to comunication with api server 
+
+k --kubeconfig conf get ns    
+
+# you will see erroe like this certificate are only allowed for the 2 IP address
+
+To reslove this we have to go in master node on below path and see apiserver.crt
+
+cd /etc/kubernetes/pki/
+
+how to check what ip inside this cert is allow or see in text format 
+
+openssl x509 -in yourecert_name.crt -text
+
+openssl x509 -in apiserver.crt -text
+
+
+you will see the number of allowed ip in filed 
+Subject Alternative Name: 
+
+The remidation is here to create a host entry in you local system for you node extranl ip and map to kubernates
+
+
+vi /etc/hosts     
+
+add node-extranl-ip  with kubernates
+
+10.0.2.4        kubernates
+
+and on this system you have to make chnages in conf file you have to kubernates insted of node-ip in front of sever https://kubernates:nodepaort 
+
+k --kubeconfig conf get ns 
+
+This is not good practice to have kube API as nodePort so you can see is it expose or by going through all above setting 
+
+
+--------------------
+admission controller
+kube-apiserver --enable-admission-plugins=NodeRestriction
+
+THis will block work node to edit other node labes alow editing pod labels whihc is running on other node using kuebllet 
+
+Why it's requer: consider you have few services which you have runed as a POC or o not confidenet about this and tolger attacked one of your 
+node and try to chnages other pod labels to get in it will block you from that 
+
+how can we check our worker not don't have access through kubelet 
+
+on worker node:
+
+k config view       # you will see nothing because you dont have a access 
+
+in side /etc/kubernates/kubelet.conf you have cert and other config we just how to use it that we can do by using export cmd 
+
+export KUBECONFIG=/etc/kubernates/kubelet.conf 
+
+now try to connect with API server you will be able to connect but due to forbidant access you can see 
+
+k get ns            # for forbidant because u never spifcent access 
+
+k get node        # this permission you have 
+
+now try to modify the labels for node 
+
+k label node node01 newlabel=yes      # it work because we have access to modify our own label but not others 
+
+
+k label node node02 newlabel=yes
+
+there is restricted label that we cant even chnages for our self 
+
+k label node node01 node-restriction.kubernates.io/test=yes     # the logic here is any label which contain restriction key word can't be editable 
+
+if you want to make change than just commmitend out it 
+
+vi /etc/kubernetes/manifests/kube-apiserver.yaml 
+
+- --enable-admission-plugins=NodeRestriction
+
+Not best practice to disspaled it inpord 
+
+
+====================================================================================
+Upgrade the cluster 
+
+
+Vwry 3 month we have new minor version, and k8s only last 3 version for support like if latest is 1.19.* that it support 1.18.* 1.17.* , 1.16.*
+
+
+we first have to update on master:
+apiserver,  scheduler, control-manager  in same siques 
+
+Then on worker node:
+
+kubectl(This can same version as apiserver or 1 version up or down )
+kubelet, kube-proxy (can 2 version bihand also work )
+
+*********************************************************************************************************************
+VVIPM:  all k8s componets should have same minor version of APIserver or one version below 
+*********************************************************************************************************************
+
+1 first we have to do 
+
+kubelet drain 
+this will never allow to schedul new pods on server can be achive by this cmd too kubectl cordon 
+
+2 do the upgrade
+
+3 kubectl uncordon 
+
+Setup palyground with previous version of k8s:
+
+# master
+bash <(curl -s https://raw.githubusercontent.com/killer-sh/cks-course-environment/master/cluster-setup/previous/install_master.sh)
+
+# worker
+bash <(curl -s https://raw.githubusercontent.com/killer-sh/cks-course-environment/master/cluster-setup/previous/install_worker.sh)
+ 
+
+# drain
+kubectl drain cks-controlplane --ignore-daemonsets (name of youre control-plain)
+
+kubectl  get node     # you will see youre controlplane is SchedulingDisabled
+
+NAME     STATUS                     ROLES           AGE     VERSION
+ubuntu   Ready,SchedulingDisabled   control-plane   9m22s   v1.25.6
+
+
+# upgrade kubeadm
+apt-get update
+apt-cache show kubeadm | grep 1.26        # here we are searcing for 1.26 all patch
+apt-mark unhold kubeadm                 # to get update now we unmark  
+apt-mark hold kubectl kubelet           # not get uddate for kubectl kubelet 
+apt-get install kubeadm=1.26.2-00
+kubeadm version                         # see your version is updated 
+apt-mark hold kubeadm                   # again marking it as un hold to get update when we do kubectl and kubelet 
+
+# kubeadm upgrade
+kubeadm version # correct version?     # it's should be same what we update 
+kubeadm upgrade plan                  # to check posible upgrade you will see the ready cmd that you have to run look like below one 
+kubeadm upgrade apply 1.26.2          # this will take some time 
+
+# now we have to upgrade kubelet and kubectl
+
+apt-mark unhold kubelet kubectl                                 # to take update on kubelet and kkubectl we are putting them on unhold 
+apt-get install kubelet=1.26.2-00 kubectl=1.26.2-00             # upgrading kubelet and kubectl on same version 
+apt-mark hold kubelet kubectl                                   # pustin again on hold kubelet and kubectl not get auto update 
+
+# restart kubelet
+service kubelet restart
+service kubelet status                            # show serverice status started if any issue it will never start the service 
+
+# show result    
+kubeadm upgrade plan                            # to if anything to update if you see nothing that we are good 
+kubectl version                                 # to check is our kubectl update or not you can check in kubectl get node you will see node on same version 
+
+# uncordon
+kubectl uncordon cks-controlplane(name of youre control-plain)      # to make youre controlplane ready again 
+
+kubectl get node            # to see youre controlplane is back aiagn or not 
+
+NAME     STATUS   ROLES           AGE   VERSION
+ubuntu   Ready    control-plane   43m   v1.26.2
+
+
+
+Upgrade the node 
+
+# drain do one by if you have maximum number of pod and auto scaling is not configure than you have to add one node extrat
+
+kubectl drain cks-node  --ignore-daemonsets (give youre node name )
+
+# upgrade kubeadm
+apt-get update                                      # get the system update 
+
+apt-cache show kubeadm | grep 1.26                  # see the installed dependncy 
+
+apt-mark unhold kubeadm                           # unhold kubeadm to get update 
+apt-mark hold kubectl kubelet                     # and hold update for 
+apt-get install kubeadm=1.26.2-00                 # install letest version of kubeadm
+apt-mark hold kubeadm                             # and stop update for kubeadm                   
+
+# kubeadm upgrade
+kubeadm version # correct version?               # it should be same as youre cmd 
+kubeadm upgrade node                             # you will be done if no error 
+
+# kubelet and kubectl
+apt-mark unhold kubelet kubectl                                 # to take a update 
+apt-get install kubelet=1.26.2-00 kubectl=1.26.2-00             # update kubelete and kubectl 
+apt-mark hold kubelet kubectl                                   # set not to take a update 
+
+# restart kubelet
+service kubelet restart
+service kubelet status
+
+# uncordon
+kubectl uncordon cks-node(give youre node name )       
+
+kubectl get node            # run on master and see is youre work node back to online or not 
+
+reference
+
+# kubeadm upgrade
+https://kubernetes.io/docs/tasks/administer-cluster/kubeadm/kubeadm-upgrade
+
+# k8s versions
+https://kubernetes.io/docs/setup/release/version-skew-policy
+
+
+
+
+#################################################################################################################################################
+Microservice Vulnerabilities - Manage Kubernetes Secrets
+#################################################################################################################################################
+
+Now we are using the 2 secret and mount first one in pod and other one will add as env in pod 
+
+k create secret generic secret1 --from-literal user=admin         # this is the literal secret and can be use kay=value 
+                                                                  # you can use any method to use in pod like mount, env or file  
+
+k create secret generic secret2 --from-literal pass=123
+
+k run pod --image=nginx -oyaml --dry-run=client > pod.yaml      # this wiill give you pod definetion 
+
+Than we modifyte pod yaml file as below 
+
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: pod
+  name: pod
+spec:
+  volumes:
+  - name: secret1                           # secret name we kept same for volumeMounts as vel 
+    secret:
+      secretName: secret1
+  containers:
+  - name: pod
+    image: nginx
+    volumeMounts:
+    - name: secret1
+      readOnly: true
+      mountPath: "/etc/secret1"         # where to mount 
+    resources: {}
+    env:                              # for store a the secret as env
+      - name: password
+        valueFrom:
+           secretKeyRef:
+              name: secret2
+              key: pass
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+
+
+If you have resource alreday created by file and you want take a change from update file youo have to use replce keyword with -- force
+
+k apply -f pod.yaml replce --force
+
+No let exec into pod and see the secrets 
+
+k exec pod -- env | grep pass           # we use -- env method becouse we have used env method while attaching it and give a key 
+
+k exec pod -- mount | grep secret1    # inside this directory you have your keyname(user) file 
+
+k exec pod -- cat /etc/secret1/user    # now once the above cmd is giving you a 
+
+So this two secrets are store in ETCD and the flow is ETCD > API-Server > kubelet > container_runtime 
+
+Now we are checking if we container_runtime access on worker node how can we get the secrets 
+
+in our setup we have containerd but you have docker you have replce crictl with docker 
+
+to switch on paltfrom you have to use 
+
+ssh node01        # this cdm only litmited to sandbox 
+
+circtl ps       # to get all runing pods where you will our pod which we have create for secrets get contain_id 
+
+crictl inspect contain_id
+
+crictl inspect  1d18f04d9fc2a         # This give you lot's of information about container in json format
+
+crictl inspect  1d18f04d9fc2a  | grep pass        # here pass is key of my secret1 which add as env you can give your key name of secret
+
+In this json you will find env block there you can see the secrets which stored as an env method 
+In mounts block you can see where in secrets is store path of your secrets but we don't see the values here 
+
+to get the mount secrets we need to access the file system and for this we first need pid inwhich this container is running 
+
+when you have big output from the cmd and want to search on that we have to use vim with | 
+
+crictl inspect  1d18f04d9fc2a  | vim -            # this cmd you can search or do anytask as vim file like /pid to search file 
+
+
+ps -aux | grep PID              # we got this PID from previous vim search 
+
+ps -aux | grep 35083            # you will see all detail for youre pid like below 
+
+root       35083  0.0  0.2   8928  5684 ?        Ss   07:11   0:00 nginx: master process nginx -g daemon off;
+
+# here the second column data is a process whihc basicaly under youre host in path /proc/35083(process_id)  inside this you can access file system of your pod 
+
+cd /proc/35083/root       # here is your container root directory before root you will see many othe information
+
+# as you know our secrets are mounted in loction /etc/secret_name/key_name 
+
+cat /proc/35083/root/etc/secret1/user             # here user is key name of secrets in your case it may different one 
+
+if you already in root of youre conatner than you have to use cat /etc/secret1/user 
+
+#################################################################################################################################################
+Note: This Not a security issue because genreley no one has a root access in your worker node if credentials link than it may be cause some issue 
+#################################################################################################################################################
+
+Now we are thiking we have ETCD access and now trainhg to hack the secrets 
+
+ETCDCTL_API=3 etcdctl endpoint health       # this will show you unhealthy but it's good mean we are not able to connect ETCD 
+
+You know we we are un able to connect the ETCD but apiserver connecting to ETCD so we are going to use that cer key ca use below cmd 
+
+cat /etc/kubernetes/manifests/kube-apiserver.yaml | grep etcd         # run on master you will see the path of all this 
+
+   - --etcd-cafile=/etc/kubernetes/pki/etcd/ca.crt
+    - --etcd-certfile=/etc/kubernetes/pki/apiserver-etcd-client.crt
+    - --etcd-keyfile=/etc/kubernetes/pki/apiserver-etcd-client.key
+    - --etcd-servers=https://127.0.0.1:2379
+
+  
+Now when we check helth we pass the cert and key ca in cmd and you can see we are able to access ETCD 
+
+ETCDCTL_API=3 etcdctl --cert /etc/kubernetes/pki/apiserver-etcd-client.crt --key /etc/kubernetes/pki/apiserver-etcd-client.key --cacert /etc/kubernetes/pki/etcd/ca.crt endpoint health
+
+# --endpoints "https://127.0.0.1:2379" not necessary because we’re on same node but when you on other server give this paramiter and ip  as show in cmd 
+
+we can get secret from defualt namespace and give the name of secret name (secret1) like this cmd 
+
+get /registry/secrets/default/secret1
+
+ETCDCTL_API=3 etcdctl --cert /etc/kubernetes/pki/apiserver-etcd-client.crt --key /etc/kubernetes/pki/apiserver-etcd-client.key --cacert /etc/kubernetes/pki/etcd/ca.crt get /registry/secrets/default/secret1
+
+and to get secret2 below cmd 
+
+ETCDCTL_API=3 etcdctl --cert /etc/kubernetes/pki/apiserver-etcd-client.crt --key /etc/kubernetes/pki/apiserver-etcd-client.key --cacert /etc/kubernetes/pki/etcd/ca.crt get /registry/secrets/default/secret2
+
+Till now we see whatever secret it's store in ETCD as plan text
+
+
+################################################################
+encryption on ETCD
+################################################################
+
+We are providing encryption on ETCD as we see previously we if it's not encrypted anyone who has a access to etcd can access youre secret
+
+for this we need a encryptionconfigration as resourcein k8s cluser and add below paramiter in apiserver 
+
+--encryption-provider-config 
+
+# encrypt etcd docs page
+# contains also example on how to read etcd secret
+https://kubernetes.io/docs/tasks/administer-cluster/encrypt-data
+
+# read secret from etcd
+ETCDCTL_API=3 etcdctl --cert /etc/kubernetes/pki/apiserver-etcd-client.crt --key /etc/kubernetes/pki/apiserver-etcd-client.key --cacert /etc/kubernetes/pki/etcd/ca.crt get /registry/secrets/default/very-secure
+
+
+This is the example of EncryptionConfiguration
+
+
+apiVersion: apiserver.config.k8s.io/v1
+kind: EncryptionConfiguration                         
+resources:
+  - resources:                                  # resource can any of thos or anything but we need secrets for now 
+      - secrets
+      - configmaps
+      - pandas.awesome.bears.example
+    providers:                                # here siques matter if first is identity, aesgcm,aescbc  this all encryption algorithem     
+      - identity: {}                          # this is for identity provider id defualt provider means nothing is encrypted 
+      - aesgcm:
+          keys:
+            - name: key1
+              secret: c2VjcmV0IGlzIHNlY3VyZQ==
+            - name: key2
+              secret: dGhpcyBpcyBwYXNzd29yZA==
+      - aescbc:
+          keys:
+            - name: key1
+              secret: c2VjcmV0IGlzIHNlY3VyZQ==
+            - name: key2
+              secret: dGhpcyBpcyBwYXNzd29yZA==
+      - secretbox:
+          keys:
+            - name: key1
+              secret: YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY=
+
+
+in above example order of provider is really matter means here oure secrets are not stored in encrypted way but you read unencrypted, and encrypted
+way of secret, aesgcm, aescbc, secretbox whihc in this format
+
+Below is another example of encryptionconfigration
+
+apiVersion: apiserver.config.k8s.io/v1
+kind: EncryptionConfiguration
+resources:
+  - resources:
+      - secrets
+      - configmaps
+      - pandas.awesome.bears.example
+    providers:
+      - aescbc:                                         # all our will store in aescbc
+          keys:
+            - name: key1
+              secret: <BASE 64 ENCODED SECRET>
+      - identity: {}                                    # here identity is used as failback option if aescbc 
+
+if we never give identity: {}  than we couldn't able to see enencrypted secrets it's like failback option for us 
+
+
+if we have unencrypted secrets and we want to encrypt it we just have use like this 
+
+save the above file in EncryptionConfiguration.yaml or anything as you want and create a encryption configration on it 
+
+tonce youre  Encryption Configuration is ready run below cmd 
+
+kubectl get secrets --all-namespaces -o json | kubectl replace -f - 
+
+we are encrypt all secrets at rest (existing secret) using aescbc and password of our choice 
+
+On master:
+
+cd /etc/kubernetes/
+mkdir etcd 
+
+what password we want for secrets that we have to encrypt by base64 we used -n for not to prenit on other line 
+
+echo -n mykubepassord@123 | base64      # u will get a output  bXlrdWJlcGFzc29yZEAxMjM=  that we can use in our ec.yaml it should be more that 16
+
+
+apiVersion: apiserver.config.k8s.io/v1
+kind: EncryptionConfiguration
+resources:
+  - resources:
+      - secrets
+      - configmaps
+      - pandas.awesome.bears.example
+    providers:
+      - aescbc:                                         # all our will store in aescbc encryption
+          keys:
+            - name: key1
+              secret: bXlrdWJlcGFzc29yZEAxMjM=             # this same string what we got from encrypt
+      - identity: {}     
+
+now we have to pass with ec configuration in our api-server 
+
+vi /etc/kubernetes/manifests/kube-apiserver.yaml  and add - --encryption-provider-config=/etc/kubernates/path/of_ec.yaml
+
+
+vi /etc/kubernetes/manifests/kube-apiserver.yaml  and add - --encryption-provider-config=/etc/kubernetes/etcd/ec.yaml
+
+and we have add the value for this ec.yaml file 
+
+in this we have to add in volumeMounts and in volume section this.
+you can copy block of pki and add new with chnaging pki to etcd  for volumeMounts , and valume as below 
+
+    - mountPath: /etc/kubernetes/etcd
+      name: etcd
+      readOnly: true
+
+    - hostPath:
+      path: /etc/kubernetes/etcd
+      type: DirectoryOrCreate
+    name: etcd
+
+consider you did somthing worng in your api server yaml how you will see logs for what's wrong in config 
+
+cd /var/log/pods/       # is file for apiserver and cat it or tail it 
+
+kube-system_kube-apiserver-controlplane_381dbc1adfff101d6010fa1c1c670d9a/kube-apiserver/
+ls # see last log can tail it 
+
+or 
+
+tail -f kube-system_kube-apiserver-controlplane_381dbc1adfff101d6010fa1c1c670d9a/kube-apiserver/5.log 
+number can changes  you will log here 
+
+if you got error like below means youre have use 16 cacert passowrd what i maintion below 
+
+2023-03-07T16:04:37.231504173Z stderr F E0307 16:04:37.231414      
+ 1 run.go:74] "command failed" err="error while parsing file: resources[0].providers[0].aescbc.keys[0].secret:
+  Invalid value: \"REDACTED\": secret is not of the expected length, got 13, expected one of [16 24 32]"
+
+
+if you never see kube_apiserver folder under this location cd /var/log/pods/   
+there is high chanse you have issue with /etc/kubernetes/manifests/kube-apiserver.yaml 
+
+if you never see the change move kube-apiserver.yaml somer else and put it back 
+
+apt-get install etcd-client 
+
+
+
+# encrypt etcd docs page
+# contains also example on how to read etcd secret
+https://kubernetes.io/docs/tasks/administer-cluster/encrypt-data
+
+# read secret from etcd
+ETCDCTL_API=3 etcdctl --cert /etc/kubernetes/pki/apiserver-etcd-client.crt --key /etc/kubernetes/pki/apiserver-etcd-client.key --cacert /etc/kubernetes/pki/etcd/ca.crt get /registry/secrets/default/your-secrets
+
+
+now you can see alreay create secrets no matter it's encrypted or plain text 
+
+now if you create new secret it automaticaly encrypt it 
+
+if you realy want to see the secret in this case you have to edit secrets file and get the data under cc: 
+and you have to decode it by cmd 
+
+k get secret name_of_scerets -oyaml 
+
+echo "cc_data" | base64 -d 
+
+now if you delete existing secrets it will create same for you and that will be encrypt
+be cearfull befoure deleting any SECRET check is it creating or not than only delete all  
+
+and if you want more secure way before delete commite out - identity{} from our ec.yaml(/etc/kubernetes/etcd/ec.yaml )
+
+restart api server you can do this by mving kube-apiserver.yaml (/etc/kubernetes/manifests/kube-apiserver.yaml ) and copy in same locationagain 
+or you can rename it and put it back same name as previous
+
+now we have commite out - identity{}  and if if never delete old secret which is previously created as plian text 
+you can't able to get it or view it but everything will work 
+
+this is not we want so let uncommite  - identity{}  
+
+Note: once we see if delete se=create it create new one than only flow below steps 
+
+uncommite  - identity{}   from /etc/kubernetes/manifests/kube-apiserver.yaml
+
+k get secret -A  -oyaml | kubectl replace -f -          # if this propely than your old plain text secret delete and replace with encrypt one
+
+check r u able to get the secret 
+
+
+k get secret name_of_scerets -oyaml         # you should be able to view he secret data 
+
+ETCDCTL_API=3 etcdctl --cert /etc/kubernetes/pki/apiserver-etcd-client.crt --key /etc/kubernetes/pki/apiserver-etcd-client.key --cacert /etc/kubernetes/pki/etcd/ca.crt get /registry/secrets/kube-system/name_of_scerets
+
+and above cmd should encrypt secret means we are good 
+
+so now we can commite  - identity{}   from /etc/kubernetes/manifests/kube-apiserver.yaml 
+
+we doesn't need to encrypt configmaps
+
+Note: here we store encryption key in local file but thsi not good pratice we should use KMS, hashicorp vault as provide insted 
+
+
+
+https://v1-22.docs.kubernetes.io/docs/concepts/configuration/secret/#risks
+
+https://www.youtube.com/watch?v=f4Ru6CPG1z4
+
+https://www.cncf.io/webinars/kubernetes-secrets-management-build-secure-apps-faster-without-secrets
+
+
+#################################################################################################################################################
+Container Vulnerabilities - Container Runtime security 
+#################################################################################################################################################
+
+
+Here we take sandboc as security leyar to reduce attack surface 
+
+hardweare > kernal > system calls > conatner_process 
+
+there is 2 terms we refer 
+kernal sapce = kernal and system calls
+user sapce = conatner_process and system calls
+
+to make this more secure we have to add sandboc leyar user sapce and look like 
+
+hardweare > kernal > system calls > sandbox >  conatner_process 
+
+adding sandbox will need more resources not good from syscall heavy wrokload container 
+
+good for smaller cotainers 
+
+no direct access to hardweare through conatner 
+
+Now we are tryin gto connect linux conatner from inside the container 
+
+let's create a pod 
+
+k run pod --image=nginx 
+
+k exec -it pod -- /bin/bash
+
+unname -r         # this will give kernal version 
+
+now exit on conatner and run a same cmd on youre master  u will get a same kernal version 
+
+if youre on master server you can run strace to see how the syscall is going for uname in kernal u can used strace with any cmd 
+
+strace unsame -r
+
+kataconatner : this is one of the conatner runtime sandbox 
+it has additional isolattion with light wait vm and individula kernal 
+
+
+hardweare > kernal > system calls > kataconatner_sandbox(hardweare virtualzation) >  conatner_process 
+
+advantage:
+strong separation leyar
+every conatner run it's own private vm(hyberviser based hardweare virtualzation)
+QEMU as default '
+
+
+Gviser: This is another tool from google as sandbox 
+
+it's user sapce kernal for conatner_process
+
+advantage:
+another leyar of separation
+NOT a hybervisor or VM based
+simulate kernal syscall with limited functionality 
+runs in usersapce 
+
+hardweare > kernal > limit system call >  Gviser > system call>  conatner_process 
+
+Hnadson seestion:
+
+we are going to create runtimeclass for runtime 
+runtimeclass is k8s resource to specify runtime handler in k8s 
+
+
+vi runtimecalls.yaml 
+
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: gvisor            # we haved used gviser 
+handler: runsc
+
+k apply -f runtimecalls.yaml
+
+k run mypod --image=nginx -oyaml --dry-run=client > pod.yaml       # now we are going to modify the pod yaml file 
+
+we have to add runtimeClassName in pod definaion 
+
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: mypod
+  name: mypod
+spec:
+  runtimeClassName: gvisor                    # we have added our runtimeClassName that is gvisor in this case 
+  containers:
+  - image: nginx
+    name: mypod
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+
+status: {}running because we don't have runc is on work worker node if it's install than our pod will run 
+
+
+k apply -f pod.yaml        # create a pod from it 
+
+Yo might see pod is not 
+
+
+let's install gvisor, runc 
+
+and configure containerd to use runc and runsc(gvisor)
+
+k get runtimeclasses        # to see which runtime class you have on your k8s cluster 
+
+we know our previously created pos is not running because we don't have run time running 
+
+On worker node:
+
+# IF THE INSTALL SCRIPT FAILS then you can try to change the URL= further down in the script from latest to a specific release
+
+bash <(curl -s https://raw.githubusercontent.com/killer-sh/cks-course-environment/master/course-content/microservice-vulnerabilities/container-runtimes/gvisor/install_gvisor.sh)
+
+service containerd status         #check conatnerd status it should be running on server 
+
+now go on master and see the 
+
+Now exec into the pod and see uname -r # now it's not same as our linux system(master or worker node )
+
+k exec  -it mypod -- bash 
+
+root@mypod:/# uname -r 
+4.4.0
+
+means now onwerd if you add runtimeClassName: gvisor in our pod tahn will never directly talk to our node kernal it's use it's on kernal with help on gvisor
+
+but if you haven't add any runtimeClassName tah it will use node kernal
+
+dmesg       # this cmd will show all log for your kernal if run this on pod u will see gvisor start log 
+
+
+# IF THE INSTALL SCRIPT FAILS then you can try to change the URL= further down in the script from latest to a specific release
+
+bash <(curl -s https://raw.githubusercontent.com/killer-sh/cks-course-environment/master/course-content/microservice-vulnerabilities/container-runtimes/gvisor/install_gvisor.sh)
+
+
+# Example of Pod+RuntimeClass:
+https://github.com/killer-sh/cks-course-environment/blob/master/course-content/microservice-vulnerabilities/container-runtimes/gvisor/example.yaml
+
+
+# Container Runtime Landscape
+https://www.youtube.com/watch?v=RyXL1zOa8Bw
+
+# Gvisor
+https://www.youtube.com/watch?v=kxUZ4lVFuVo
+
+# Kata Containers
+https://www.youtube.com/watch?v=4gmLXyMeYWI
+
+
+#################################################################################################################################################
+OS level security:
+#################################################################################################################################################
+
+so we have manage the permission at pod level means instated of giving full permission you can spacefy which user group and fs grouup to use in pod spec:
+securityContext:
+    runASUSer: 1000
+    runAsGroup: 3000
+    fsGroup: 2000
+
+from where you get this number 
+
+when you run cmd id on linux it will give id for youre user(runASUSer) gid(runAsGroup) and groups(fsGroup)
+
+id
+uid=1001(mahi) gid=1001(mahi) groups=1001(mahi)
+
+if id is 0 mean you have run cmd as root that is not good 
+
+and inside container block you can add on what user we want to excute the cmd 
+
+when you want to run and create ymal from that you use syntext like this 
+
+ k run namofpod --image=imagename --command -oyaml --dry-run=client > anyname.yaml -- sh -c "youre_cmd"       # we have pass cmd after yaml output 
+
+k run pod --image=busybox --command -oyaml --dry-run=client > pod.yaml -- sh -c "sleep 1d"
+
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: pod
+  name: pod
+spec:
+  containers:
+  - command:
+    - sh
+    - -c
+    - sleep 1d
+    image: busybox
+    name: pod
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+
+k apply -f pod.yaml 
+
+ k exec -it pod -- sh  
+
+ / # id
+uid=0(root) gid=0(root) groups=10(wheel)
+/ #             # so we are as root this is not good thing 
+
+
+so now we are gonug to modify the pod 
+
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: pod
+  name: pod
+spec:
+  securityContext:                #if you add securityContext at pod level it will applicable for all conatener 
+    runAsUser: 1000 
+    runAsGroup: 3000
+    fsGroup: 2000
+  containers:               # if you want securityContext for only for spacefic conatner than you menation here 
+  - command:
+    - sh
+    - -c
+    - sleep 1d
+    image: busybox
+    name: pod
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+
+k apply -f pod.yaml delete --force --grace-period 0 
+
+k apply -f pod.yaml 
+
+Now exec into pod and see id is different
+
+controlplane $ k exec -it pod pod -- sh 
+~ $ id 
+uid=1000 gid=3000 groups=2000
+
+now we trying to use runAsNonRoot under conatner means this contaner will not able run any cmd on root 
+
+
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: pod
+  name: pod
+spec:
+  securityContext:                #if you add securityContext at pod level it will applicable for all conatener 
+    runAsUser: 1000 
+    runAsGroup: 3000
+    fsGroup: 2000
+  containers:               # if you want securityContext for only for spacefic conatner than you menation here 
+  - command:
+    - sh
+    - -c
+    - sleep 1d
+    image: busybox
+    name: pod
+    resources: {}
+    securityContext:
+      runAsNonRoot: true            # your conatner will un as no root user 
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+
+
+if you add runAsNonRoot and you haven't defined the securityContext runAsUser in pod levele you will ket 
+createConatnerCOnfigErrror while creatting conatner 
+
+securityContext:
+    runAsNonRoot: true       # this will overwrite pod levele paramiter and use what we menstion in conatner
+
+previlage conatner mean it's run on root(0) and have same id and process ad as your main host 
+
+in some cases we need previleged
+
+nowe are gooing to create a privileged conatener and text with sysctl 
+syctl is used to test kernal if you necessary permission
+
+if you don't have proper permission you will the error like this 
+
+sysctl kernel.hostname=mahi             # here we are trying to change the hostname useing sysctl tool on unprevileged conatner 
+sysctl: error setting key 'kernel.hostname': Read-only file system
+
+you will get error even youre conatener is running as root to run the sysctl you need previleged access 
+
+means removing securityContext willnever going to work for you, we have to add previlage ture 
+
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: pod
+  name: pod
+spec:
+  containers:               # if you want securityContext for only for spacefic conatner than you menation here 
+  - command:
+    - sh
+    - -c
+    - sleep 1d
+    image: busybox
+    name: pod
+    resources: {}
+    securityContext:
+      privileged: true            # give previlaged access
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+
+
+now run this sysctl cmd you will it excute properly 
+
+sysctl kernel.hostname=mahi
+
+
+PrivilegeEscalation: this means get more permission that it's perenet previlage 
+
+Note: it's alway good to desable privilegeEcalation 
+
+
+
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: pod
+  name: pod
+spec:
+  containers:               # if you want securityContext for only for spacefic conatner than you menation here 
+  - command:
+    - sh
+    - -c
+    - sleep 1d
+    image: busybox
+    name: pod
+    resources: {}
+    securityContext:
+      privileged: true            # give previlaged access
+  dnsPolicy: ClusterFirst
+  allowPrivilegeEscalation: fales         # to block previlage permission if you set true you will get access to previlage escalation 
+status: {}
+
+Note: you dosen't need to set it if youre setting false to allowPrivilegeEscalation add only if you want set it true by default it's fale 
+you no need to add this 
+
+
+to check is youre conatner has previlageEcallesstion you can test it by below cmd 
+
+cat /proc/1/status 
+
+in output u will see 
+
+NoNewPrivilage: 0                 # this means you don't have previlage but if got  NoNewPrivilage: 1 mean you have privileged
+
+
+https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.20/#podsecuritycontext-v1-core
+
+
+################################################################
+mTLS: mutual TLS
+################################################################
+
+Mutual authentication 
+Two way (bilateral) authentication 
+Two parties can authenticat each othe ast same time 
+
+bydefault very conatner talk to echo other without cert and on CNI level 
+
+also we can have ingress whihc will take a tracffices from out side and inter in our pod but ingress alway with certificates(tls)
+
+when we get traffices from out side it's encrypted and it get decripated at ingress level and than send to pod 
+
+Consider in such sinero if we have attacker already eneter in pod he can access every data in side our cluster because ingress tls also drop at ingress leve 
+
+for this we have mTLS this can help you secure internal pod too means if attached got a pod access still he can't gain other traffices
+
+consider like we have pod1 & 2 1 is going to send a data and 2 will decript the so  pod1 need a client cert and pod2 need server cert 
+
+and CA to manage and watch everythings going on 
+
+and if trafice go in other direction we need pod2 need a client cert and pod1 need server cert and  consider if you have many pods and u want to rotate it 
+it's bit overhread rihgt ?
+
+the easyes way to do this
+ add one sidecar conatner in your app this is proxy contaner 
+ so your pod1 will talk to pod2 way there proxy conatners only porxy conatner on both pod conaten cert and ca details 
+ here we doesn't need to modify application logic youre application still exposed on http but traffic is going through proxy conatner can be on https 
+
+we have to create a IPtable rules for redirecting traffices vai proxy 
+like initConatner need a NET_ADMIN capabilities
+
+now we are gong to create a pod 
+
+k run app --image=bash --command -oyaml --dry-run=client > pod.yaml -- sh -c "ping  google.com "
+
+cat pod.yaml 
+
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: app
+  name: app
+spec:
+  containers:
+  - command:
+    - sh
+    - -c
+    - 'ping  google.com '
+    image: bash
+    name: app
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+
+k logs -f  app          # to see the pod logs we have to kubectl logs -f pod_name we added -f for follow the logs 
+
+now we are gong to add the sidecar conatner here 
+ 
+now first delete teh pod and create new pod with below file 
+
+ apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: app
+  name: app
+spec:
+  containers:
+  - command:
+    - sh
+    - -c
+    - 'ping  google.com '
+    image: bash
+    name: app
+    resources: {}
+  - name: proxy             # this is the our new side car conatner we nameed it as proxy  
+    image: ubuntu           # we used ubuntu image here 
+    command:                # we give cmd to this syntext of cmd 
+    - sh                    # we want shell so we used sh genreley we used sh only but if you want other you can use other one 
+    - -c                    
+    - 'apt-get update && apt-get install iptables-y && ipatables -L && sleep 1d'      # this cmd will update pkg and install iptabe and list iptabe rules right now 
+    securityContext:                # this securityContext is only for conatner 
+      capabilities:                 # we are modifing capabilities(permission)
+         add: ["NET_ADMIN"]         # adding permission(capabilities) for NET Admin means this conater has a net admin permission 
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+
+now get the pod you will see the 2 conater is running 
+
+k get pod 
+
+NAME   READY   STATUS   RESTARTS      AGE
+app    1/2     Error    2 (24s ago)   49s
+
+you see our one of conatner has error how can we checked what is the error 
+
+kubectl logs -f pod_name -c conatner_name 
+
+k logs -f app -c proxy 
+
+you see our pod is failling due to permission issue and how can we handle this 
+
+go to k8s documenet and search for pod capabilities 
+
+here you can find the right document but 
+
+see here we were failing due to permission issue so we goin g to add securityContext and give this conatner permission of Net admin 
+
+    securityContext:
+      capabilities:
+        add: ["NET_ADMIN", "SYS_TIME"]        # this is way you can add more than one permission doesn't need SYS_TIME 
+
+now with is changes you have to create a new Pod
+
+and you will see now error 
+
+in logs of proxy conater you will iptabels log of establing conatntion like below 
+
+Processing triggers for libc-bin (2.35-0ubuntu3.1) ...
+Chain INPUT (policy ACCEPT)
+target     prot opt source               destination         
+
+Chain FORWARD (policy ACCEPT)
+target     prot opt source               destination         
+
+Chain OUTPUT (policy ACCEPT)
+target     prot opt source               destination         
+
+
+Note: We haven't try a mTLS here but give try this is a demo here 
+
+################################################################
+OPA: Open Policy Agent 
+################################################################
+
+OPA: is allow us writ our onw custom policy for all our needs by install this extantion 
+
+so what is OPA and gatekeeper 
+
+use certen labels we can enforce policies 
+
+we will also create a policy to enforce pod replica count 
+
+as you know we have 3 stage 1 authentication(who are you), authorization(are u allowed to perfrom this taks) , admission control(check policies)
+
+our OPA is come under the admission control stage where we check to apply this on policies on resource does it has same all requerd labesl 
+
+OPA writen in rego language you can create policy in json and yaml 
+
+so we have to install gatekeeper on k8s as custom resource definaion(CDR)
+
+this is how our constraint template look like and it will search for label
+
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: k8salwaysdeny             # this means we can create a new k8s resource with this name 
+
+This is constraint
+
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sAlwaysDeny                                 # this should be same name what we mension in ConstraintTemplate
+metadata:
+  name: pod-always-deny                             # this is use to defined pod must have spacefic labels what we defined here 
+
+This is full policies
+https://github.com/killer-sh/cks-course-environment/tree/master/course-content/opa/deny-all
+
+
+Installing OPA gatekeeper:
+
+1: check no admission plugins ins enabled a part from NodeRestriction
+
+you can checked in what is current admission plugins installed in kube-apiserver.yaml 
+
+vi /etc/kubernetes/manifests/kube-apiserver.yaml
+
+under the paramiter    - --enable-admission-plugins=NodeRestriction # if you have NodeRestriction that's fine 
+
+if any other is there you have to remove it and start the api server by renaming your kune-apiserver.yaml and rename back again 
+
+after this you can run below cmd and your good to go it will install a gatekeeper
+
+kubectl create -f https://raw.githubusercontent.com/killer-sh/cks-course-environment/master/course-content/opa/gatekeeper.yaml
+
+This will create a necessary resource and  nsamespase 
+
+you will see validation vebhook 
+
+You can find it in gatekeeper_system ns 
+
+k get all -n gatekeeper-system
+NAME                                                 READY   STATUS    RESTARTS   AGE
+pod/gatekeeper-audit-659d664485-5h5g5                1/1     Running   0          2m37s
+pod/gatekeeper-controller-manager-7c4d7bb9b9-jqhlk   1/1     Running   0          2m37s
+pod/gatekeeper-controller-manager-7c4d7bb9b9-vnvrf   1/1     Running   0          2m37s
+pod/gatekeeper-controller-manager-7c4d7bb9b9-xlcrm   1/1     Running   0          2m37s
+
+NAME                                 TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)   AGE
+service/gatekeeper-webhook-service   ClusterIP   10.107.174.205   <none>        443/TCP   2m37s
+
+NAME                                            READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/gatekeeper-audit                1/1     1            1           2m37s
+deployment.apps/gatekeeper-controller-manager   3/3     3            3           2m37s
+
+NAME                                                       DESIRED   CURRENT   READY   AGE
+replicaset.apps/gatekeeper-audit-659d664485                1         1         1       2m37s
+replicaset.apps/gatekeeper-controller-manager-7c4d7bb9b9   3         3         3       2m37s
+controlplane $ 
+
+there is 2 type of webhook validation and mutating webhook 
+
+if you have created such webhook you have to go through such webhook and pass it 
+
+==========================
+Create OPA Policy for deny 
+==========================
+
+k get crd            # to see custom resource definaion
+
+k get crd | grep gatekeeper           # to see the gatekeeper custom resource definaion
+
+configs.config.gatekeeper.sh                         
+constraintpodstatuses.status.gatekeeper.sh            
+constrainttemplatepodstatuses.status.gatekeeper.sh  
+constrainttemplates.templates.gatekeeper.sh               
+
+k get constrainttemplates       # to see is there any resources for constrainttemplates
+
+there is not any constrainttemplates resource so we are going to create 
+
+use below url to see the yaml example 
+
+https://github.com/killer-sh/cks-course-environment/tree/master/course-content/opa/deny-all
+
+
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: k8salwaysdeny
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sAlwaysDeny                 # means we are gong to new K8sAlwaysDeny custom resource definaion and after this we  can create a K8sAlwaysDeny resource
+      validation:
+        # Schema for the `parameters` field
+        openAPIV3Schema:
+          properties:
+            message:
+              type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |                                               # this section is writen in rego lan
+        package k8salwaysdeny                               # this name should be a same name as ConstraintTemplate
+
+        violation[{"msg": msg}] {                           # it will take some paramiter and out put this msg 
+          1 > 0                                             # here you can give real Conditional but for now i use Conditional which is alway true so our policy will apply 
+          msg := input.parameters.message
+        }                                                   # valetion excute when all Conditional will ture 
+
+save above code in templet.yaml 
+
+k apply -f templet.yaml 
+
+k get ConstraintTemplate        # now you will see the constraint
+
+k get k8salwaysdeny        # it will never give any resource means we dont have k8salwaysdeny
+
+Now we can create a constraint like belwo 
+
+
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sAlwaysDeny
+metadata:
+  name: pod-always-deny
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]          # where to apply this constraint in this case it's appled on pod 
+  parameters:
+    message: "ACCESS DENIED!"       # we can pass any massge as per your requerment 
+
+
+save as pod_dinay.yaml 
+
+k apply -f pod_dinay.yaml 
+
+k get k8salwaysdeny            # now you will see resource 
+
+now try to craete a pod you will see error masg what we give in valetion like below 
+
+k run pod --image=ngnix 
+Error from server ([pod-always-deny] ACCESS DENIED!): admission webhook "validation.gatekeeper.sh" denied the request: [pod-always-deny] ACCESS DENIED
+
+good practice is allway describe you policy is how many resource valetion 
+
+if any pre exsisting pod is do valetion it will never stop it but if any case pod need to restart and create a new that time may be cause issue 
+you can see while describe it 
+
+k describe k8salwaysdeny pod-always-deny 
+
+under Total Violations:  16
+
+if any Condition is not rue than you valetion will never happen 
+
+so in valetion i add one more Condition whihc will be false and create a pod it will be create 
+          1 > 2 
+
+Now are going to create a policies whihc will enforce to have nsamese labale=cks if u try to create ns without such label it will failed 
+
+reference link:
+https://github.com/killer-sh/cks-course-environment/tree/master/course-content/opa/namespace-labels
+
+
+This is our constraint template
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: k8srequiredlabels
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sRequiredLabels
+      validation:
+        # Schema for the `parameters` field
+        openAPIV3Schema:
+          properties:
+            labels:
+              type: array                   # as we know lables can one or more so we use array to pass in our k8srequiredlabels defination LN:2792
+              items: string                 # labels are alwasy string 
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8srequiredlabels
+
+        violation[{"msg": msg, "details": {"missing_labels": missing}}] {       # this will print msg LN 2776 and missing lables tha will get on LN 2776
+          provided := {label | input.review.object.metadata.labels[label]}      # here we take data fron resource(pod, ns or naything) json and asing to label  
+          required := {label | label := input.parameters.labels[_]}             # here we are taking labels from K8sRequiredLabels LN 2791-2 
+          missing := required - provided                                        # here we check in provided do we have requerd by use - minues paramiter 
+          count(missing) > 0                                                    # if missiing count is more than 0 than you're valetion will happen and never allow to  create ns 
+          msg := sprintf("you must provide labels: %v", [missing])
+        }
+
+
+This is the k8srequiredlabels yaml 
+
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredLabels
+metadata:
+  name: ns-must-have-cks
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Namespace"]                # this will applyed on namespace
+  parameters:                 
+    labels: ["cks"]                         # this is the labe should have when u try to create new ns this is array we have use in ConstraintTemplate LN:2784
+
+k get crd | grep gatekeeper       # you will see CRD created for k8srequiredlabels
+
+k get k8srequiredlabels       # now check constraint labales u will see the it's create 
+
+now try to create a ns without lable of cks 
+
+k create ns mahi 
+Error from server ([ns-must-have-cks] you must provide labels: {"cks"}): admission webhook "validation.gatekeeper.sh" denied the request: [ns-must-have-cks] you must provide labels: {"cks"}
+
+now try to create a ns with lable of cks 
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  creationTimestamp: null
+  name: mahi
+  labels:
+   cks: mahi                    # we have cks label means it will allow 
+spec: {}
+status: {}
+
+k describe k8srequiredlabels ns-must-have-cks          # here u can see total number of valetion 
+
+k describe ConstraintTemplate_name customresouce_name     # in total number you will 
+
+now we going to modifing default names 
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  creationTimestamp: "2023-02-23T12:52:26Z"
+  labels:                                             # we have added lables cks  the value for cks can be anything than you will see default name is go for valetion lsit 
+    cks: amazing
+    kubernetes.io/metadata.name: default
+  name: default
+  resourceVersion: "2607"
+  uid: 2a1bcd6e-aad9-4fc6-848e-43452526aa38
+spec:
+  finalizers:
+  - kubernetes
+status:
+  phase: Active
+
+k describe k8srequiredlabels ns-must-have-cks
+
+if you give more than one lable in parameters while creating ns we should have 2 lables
+
+  parameters:                 
+    labels: ["cks", "test"]    
+
+
+===================================================================================================================
+Now we are going to create a policy whihc only allow deploy which minimum replica count if not it will failed 
+===================================================================================================================
+
+refer link:
+https://github.com/killer-sh/cks-course-environment/tree/master/course-content/opa/deployment-replica-count
+
+save this as ConstraintTemplate.yaml or any name as you want 
+
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: k8sminreplicacount
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sMinReplicaCount
+      validation:
+        # Schema for the `parameters` field
+        openAPIV3Schema:
+          properties:
+            min:
+              type: integer                                           # and we are pasing replica count that is type integer 
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8sminreplicacount
+
+        violation[{"msg": msg, "details": {"missing_replicas": missing}}] {
+          provided := input.review.object.spec.replicas                             # check in resource json file 
+          required := input.parameters.min                                          # check in constraint(K8sMinReplicaCount)
+          missing := required - provided                                            # check if provided is in requerd 
+          missing > 0                                                               # if requerd in not in provider than missing is grater than 0 
+          msg := sprintf("you must provide %v more replicas", [missing])            
+        }
+
+
+k apply -f ConstraintTemplate.yaml
+
+save this as constraint.yaml 
+
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sMinReplicaCount
+metadata:
+  name: deployment-must-have-min-replicas
+spec:
+  match:
+    kinds:
+      - apiGroups: ["apps"]                         # the api group is always app for resource
+        kinds: ["Deployment"]                       # it's appled on deploment
+  parameters: 
+    min: 2                            # minimum replace should two
+
+k apply -f  constraint.yaml 
+
+
+k describe k8sminreplicacount deployment-must-have-min-replicas         # this will give u existing valetion list 
+
+
+k create deployment test --image=ngnix        # thsi will give you error becasue we valeting a number minimum replica container_runtime
+
+k create deploment test --image=nginx --replace=1       # this also not satiscfying our Condition and it's failling 
+
+k create deploment test --image=nginx --replace=2     # this will excute without Error
+
+k create deploment test --image=nginx --replace=3     # this will excute without Error
+
+==========================================================================================
+This is the palyground for rego language
+
+https://play.openpolicyagent.org
+
+here is few example of gatekeeper policies
+https://github.com/BouweCeunen/gatekeeper-policies
+
+https://www.youtube.com/watch?v=RDWndems-sk
+
+
+################################################################################################################################
+supply chain security image footprint
+################################################################################################################################
+ 
+refer link:
+https://github.com/killer-sh/cks-course-environment/tree/master/course-content/supply-chain-security/image-footprint
+
+To reduce the footprint we have use multy staging while create images 
+
+you know we copy the conaten from one image to another imane by useing 
+from ubuntu as build 
+copu from build
+
+but use can use copy from stage number like 0 
+
+
+
+# build container stage 1
+FROM ubuntu
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y golang-go
+COPY app.go .
+RUN CGO_ENABLED=0 go build app.go
+
+# app container stage 2
+FROM alpine
+COPY --from=0 /app .                # here we use --from=0  because we use FROM ubuntu is on 0th stage 
+CMD ["./app"]
+
+This will reduce size docker image 
+
+here we have to use spacefic version in from image so data we will have sright image insted of latest image
+
+don't run image as root 
+
+# build container stage 1
+FROM ubuntu:20.04
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y golang-go=2:1.13~1ubuntu2
+COPY app.go .
+RUN pwd
+RUN CGO_ENABLED=0 go build app.go
+
+# app container stage 2
+FROM alpine:3.12.0
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup -h /home/appuser       # craete a user and group and use that user for running the image 
+COPY --from=0 /app /home/appuser/
+USER appuser                                          # use created user for image run from this like every will excute as this user 
+CMD ["/home/appuser/app"]
+
+============================
+make a file system read only 
+============================
+
+FROM alpine:3.12.0
+RUN chmod a-w /etc                               # This will remove writ permission from everyone on /etc 
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup -h /home/appuser       # craete a user and group and use that user for running the image 
+COPY --from=0 /app /home/appuser/
+USER appuser                                          # use created user for image run from this like every will excute as this user 
+CMD ["/home/appuser/app"]
+
+============================
+Remove shell access 
+============================
+
+
+# app container stage 2
+FROM alpine:3.12.0
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup -h /home/appuser         # we run cmd before running the shell 
+RUN rm -rf /bin/*                                            # to remove shell access we are going to remove whole bin directory not a good practice 
+COPY --from=0 /app /home/appuser/
+USER appuser
+CMD ["/home/appuser/app"]
+
+if you remove shell make sure u run cmd before it and also you will not able to exce into such pod becaused you have removed the shell 
+
+https://docs.docker.com/develop/develop-images/dockerfile_best-practices
+
+
+#################################################################################################################################################
+supply chain security static analysis
+#################################################################################################################################################
+
+Static code analysis:
+
+It's look in source code nad text file 
+check against rule this rule is check certen security parameters
+enforce rule 
+
+example of rules: 
+always defined the resource, request and limits 
+pod shouldn't use default service account 
+
+we should run static code analysis at code commite lavel ore before the build gets triggers 
+
+so when we do OPA it's also some how the static code analysis
+
+Kubesec is risks analysis tool for k8s 
+
+we can run kubesec as a:
+
+Binary
+Docker COntainer 
+kubectl plugins
+admission controller(kubesec-webhook )
+
+https://kubesec.io
+
+
+
+now we are going use kubesec on our k8s cluser to perform static code analysis
+
+create yaml for pod 
+
+k run myapp --image=nginx -oyaml --dry-run=client > pod.yaml
+
+now we are going to run static code analysis on our pod.yaml 
+
+docker run -i kubesec/kubesec:512c5e0 scan /dev/stdin < resource.yaml       # so here we are running static code analysis on resource.yaml 
+
+docker run -i kubesec/kubesec:512c5e0 scan /dev/stdin < pod.yaml        # this is the way we are doing the static code analysis on our pod yaml 
+
+Now this will give all best practice that need to apply on our pod and give you score for security 
+
+Now doing testin gin k8s cluster 
+
+git clone https://github.com/killer-sh/cks-course-environment.git
+
+cd cks-course-environment/course-content/supply-chain-security/static-analysis/conftest/kubernetes
+
+./run.sh            # run this shell script you will how many test is failling 
+
+git clone https://github.com/killer-sh/cks-course-environment.git
+
+
+Image vulnerabilities: 
+
+we have clair and trivy inwhich trivy is esay to use 
+
+document reference:
+https://github.com/aquasecurity/trivy#docker
+
+
+docker run aquasec/trivy      image nginx    #This is run trivy conatner in your system and check nginx image is secure or not 
+
+and give details vulnerabilities 
+
+===================
+Total: 116 (UNKNOWN: 0, LOW: 84, MEDIUM: 11, HIGH: 18, CRITICAL: 3)
+
+also give box to show where we have vulnerabilities and with CVE url 
+
+now we are testin gour kube apiserver image 
+
+k get pod  kube-apiserver-controlplane -n kube-system -oyaml | grep image       # useing this cmd you will see image ver of kube apiserver 
+
+docker run aquasec/trivy image registry.k8s.io/kube-apiserver:v1.26.1
+
+docker run ghcr.io/aquasecurity/trivy:latest image registry.k8s.io/kube-apiserver:v1.26.1       # if you have old trivy use this cmd 
+
+How we are going to list all images used in cluser and also image degest insted of image tag 
+
+k get pod -A -oyaml | grep "image:" | grep -v "f:"              # This cmd to see all images used in your cluster 
+
+k get pod -A -oyaml | grep "image:"                       # This cmd  also used to see all images used in your cluster 
+
+basicaly when you conatner is run inside conaten yaml > contanerStatus imageID(degest) is called as degest id 
+
+k get pod kube-apiserver-controlplane -n kube-system  -oyaml        # you will see degestID(imageID)
+
+registry.k8s.io/kube-apiserver@sha256:99e1ed9fbc8a8d36a70f148f25130c02e0e366875249906be0bcb2c2d9df0c26      # will look like this 
+
+we can replce this in vi /etc/kubernetes/manifests/kube-apiserver.yaml  for image:
+
+when you make chnages it will take 1 or 2 mint to come up again, you can check again with below cmd 
+
+k get pod -n kube-system | grep api 
+
+=======================================
+whitelist only requer registry
+=======================================
+
+So that youre ristricting user to use particulr registry 
+
+
+# install opa
+kubectl create -f https://raw.githubusercontent.com/killer-sh/cks-course-environment/master/course-content/opa/gatekeeper.yaml
+
+# opa resources
+https://github.com/killer-sh/cks-course-environment/tree/master/course-content/supply-chain-security/secure-the-supply-chain/whitelist-registries/opa
+
+
+Create CRD template using below yaml 
+
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: k8strustedimages
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sTrustedImages
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8strustedimages
+
+        violation[{"msg": msg}] {
+          image := input.review.object.spec.containers[_].image             # in this we are checking in json conatner image and asing to image varibale 
+          not startswith(image, "docker.io/")                           # checking image value is not startswith docker.io that valetion happen
+          not startswith(image, "k8s.gcr.io/")                        # checking image value is not startswith k8s.gcr.io that valetion happen
+          msg := "not trusted image!"                               # show the msg when we run this 
+        }
+
+
+Than craete a crd for resource all_pod_must_have_trusted_images.yaml 
+
+
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sTrustedImages
+metadata:
+  name: pod-trusted-images
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]                          # this rules checking for pod 
+
+
+k get crd | grep gatekeeper         # will give k8strustedimages
+
+k get k8strustedimages              # will give pod-trusted-images
+
+k descrip k8strustedimages pod-trusted-images           # this will show you how many valetion is happing 
+
+k run pod --image=ngnix                    # This will give you below error 
+
+Error from server ([pod-trusted-images] not trusted image!): admission webhook "validation.gatekeeper.sh" denied the request: [pod-trusted-images] not trusted image!
+
+We have only allow docker and k8s registry so we have modify our cmd as below 
+
+k run pod --image=docker.io/ngnix           # this will run successfuly without giveing you any error 
+
+k run pod --image=test.io/ngnix         # will never allow
+
+k run pod --image=k8s.gcr.io/ngnix        # this will run becasue we haved used it in our crd 
+
+
+========================================
+ImagePolicyWebhook:
+
+
+# install opa
+kubectl create -f https://raw.githubusercontent.com/killer-sh/cks-course-environment/master/course-content/opa/gatekeeper.yaml
+
+# opa resources
+https://github.com/killer-sh/cks-course-environment/tree/master/course-content/supply-chain-security/secure-the-supply-chain/whitelist-registries/opa
+
+
+we have to add ImagePolicyWebhook in front to enable-dminision-plugins in /etc/kubernates/manifests/kube_apiserver.yaml
+
+  - --enable-admission-plugins=NodeRestrictioni,ImagePolicyWebhook 
+
+you will see api server never come up go and check logs 
+
+cd  /var/log/pods/kube-system_kube-apiserver* 
+
+cd kube_apiserver
+
+cat number.log # canbe 1.log, 2.log
+
+
+# get example
+git clone https://github.com/killer-sh/cks-course-environment.git
+cp -r cks-course-environment/course-content/supply-chain-security/secure-the-supply-chain/whitelist-registries/ImagePolicyWebhook/ /etc/kubernetes/admission
+
+in this repo we have a few policy administer policy and all 
+
+admission_config.yaml
+
+everything else is in kubeconfig and we have few certs 
+
+after this we have to add the below parramitor in kube_apiserver
+
+- --admission-control-config-file=/etc/kubernetes/admission/admission_config.yaml 
+
+also we have to add Hostpath  and valumeMount with same dir name and als
+
+    - mountPath: /etc/kubernetes/admission
+      name: k8s-admission 
+      readOnly: true
+
+
+
+
+# to debug the apiserver we check logs in:
+
+you will see api server never come up go and check logs 
+
+cd  /var/log/pods/kube-system_kube-apiserver* 
+
+cd kube_apiserver
+
+
+
+# example of an external service which can be used
+https://github.com/flavio/kube-image-bouncer
+
+
+=====================================================================================================
+runtime security: host leavel and conatner leacel 
+=====================================================================================================
+
+This is the list of syscall 
+https://man7.org/linux/man-pages/man2/spu_run.2.html
+
+strace is tooll will log all syscall mostly come with many os 
+
+it also log and disspaled signals recived by process
+
+strace ls         # here we are checking we ls starce 
+
+strace -cw ls       # this is way you can see strace in nice format
+
+
+Now we are going to use strace and see th etcd process use /proc dir  trying below Activity 
+
+list the syscall 
+
+find all the open file 
+
+read the secret value 
+
+
+crictl ps tecd  | grep etcd 
+
+ps -aux | grep etcd         #To see the process 
+
+get the pid mostly midal one 
+
+now we have pid so we can use that in strace to see how it's going on 
+
+strace -p pid -f                # -p to see process syscall -f to follow along if youre getting too much you have to remove -f 
+
+strace -p 33458 -f
+
+strace -p 33458 -f -cw        # it will print a result after 1 mint 
+
+
+now to find the open file 
+
+cd /proc/33458
+ls  -la         # in this you will find many files 
+
+ls -la exe      # this will retrun below output 
+
+lrwxrwxrwx 1 root root 0 Mar 18 10:23 exe -> /usr/local/bin/kube-apiserver
+
+as you know there is directory fd which contain open file and open sockets 
+
+cd fd 
+
+ls -la        # you will see file and sockets 
+
+now such file you can run grep cmd and see what's going on 
+
+grep keyword -A10 -B10          # parameters a and bb will show after and before line 
+
+now we are creating a pod and see how can we se the secrets from out side 
+
+ k run pod --image=ngnix --dry-run=client -oyaml  > pod.yaml
+
+ we added a secret and now it will look like below 
+
+ apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: pod
+  name: pod
+spec:
+  containers:
+  - image: nginx
+    name: pod
+    env:
+    - name: secrets
+      value: "12234324234" 
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+
+
+k exec pod  -- env        # this will print the env for ur pod 
+
+Now find the pid which is running or pod and the in proc dir you can go to that pid 
+
+go to worker node 
+ps -aux | grep nginx          # this will confus u so you can use pstree 
+
+pstree -p          # this will show you the all process in tree format 
+
+ pstree -p | grep nginx                                # here we are checking just nginx 
+
+           |-containerd-shim(42261)-+-nginx(43072)---nginx(43105)
+
+Now copy nginx process id and now in /proc dir you can see the process 
+
+cd /proc/43072
+
+ls -la exe 
+
+cat environ     # show you call the secret store in your nginx pod 
+
+cd fd 
+
+ls -la 
+
+
+ 
+This tool halp use to fined the malicues proccess in our conaten use syscall
+
+# install falco 
+
+curl -s https://falco.org/repo/falcosecurity-3672BA8F.asc | apt-key add -
+echo "deb https://download.falco.org/packages/deb stable main" | tee -a /etc/apt/sources.list.d/falcosecurity.list
+apt-get update -y
+apt-get -y install linux-headers-$(uname -r)
+apt-get install -y falco=0.26.1
+
+
+tail -f /var/log/syslog | grep falco
+
+we can found defualt falco rules 
+
+cd /etc/falco
+
+falco_rules.yaml 
+
+Note: if live necessary prob failed it will keep resting if readyness prob failed k8s will never send tartic to that pod 
+
+# way to find test in multipul file 
+
+grep -r " youre keyword" .          # here we give . as current directory but if you have other loction you can give reltive path or abstart path 
+
+default falco rule will overwrite by local falco rule 
+
+
+
+# docs about falco
+https://v1-16.docs.kubernetes.io/docs/tasks/debug-application-cluster/falco
+
+https://falco.org/docs/rules/supported-fields
+
+# Syscall talk by Liz Rice
+https://www.youtube.com/watch?v=8g-NUUmCeGI
+
+
+=======================================
+runtime security of container: 
+
+immuteble container means once you run conatner you can't modifing it means you can't ssh and add some new app or remove some app 
+or do modification 
+
+what we can do to run our pod as immuteble  it's started with image lavel 
+
+remove bash/shell 
+make filesystem read-only 
+run as user and not root 
+
+This all at image level but if we dont have access at image level 
+
+while our pod running we can modify cmd to run as  immuteble
+
+or we can add startup prob to run particulr cmd at startup time 
+note: untill youre startup prob get run successfuly liveness and readyness prob will never run 
+
+right way to do this is:
+
+enforce policy using securityContext and podsecuritypolicies 
+
+NOw we are trying to remove touch and bash from startupProb 
+
+k run pod --image=httpd -oyaml --dry-run=client > pod.yaml 
+
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: pod
+  name: pod
+spec:
+  containers:
+  - image: httpd
+    name: pod
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+
+you can exec into this pod 
+
+k exec -it pod -- sh 
+
+we can exec into it and edit the and make a chnages in this pod 
+
+now we are adding startupProb in this yaml 
+
+    startupProbe:
+      exec:
+        command:
+        - rm
+        - /bin/touch
+      initialDelaySeconds: 5
+      periodSeconds: 5
+
+
+overall our pod.yaml look like below 
+
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: pod
+  name: pod
+spec:
+  containers:
+  - image: httpd
+    name: pod
+    startupProbe:                         # we are excuting startup probe 
+      exec:
+        command:
+        - rm
+        - /bin/touch 
+        - /bin/bash                # here we are removing touch and bash binery  
+      initialDelaySeconds: 5
+      periodSeconds: 5
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+
+
+Now we cant use -- /bin/bash because we have removed it 
+
+k exec -it pod -- /bin/bash         # this will never excute 
+
+
+------------------------------------------------------------------------------------
+
+Now we are enforceing securityContext for pod readOnly file system 
+
+and also ensure some dir are writeble useing emptyDir volume
+
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: pod
+  name: pod
+spec:
+  containers:
+  - image: httpd
+    name: pod
+    securityContext:                              # we use securi  for readOnlyRootFilesystem
+      readOnlyRootFilesystem: true  
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+
+but when we create pod with this seeting it will failed with below error 
+
+k logs pod pod
+AH00558: httpd: Could not reliably determine the server's fully qualified domain name, using 192.168.1.6. Set the 'ServerName' directive globally to suppress this message
+AH00558: httpd: Could not reliably determine the server's fully qualified domain name, using 192.168.1.6. Set the 'ServerName' directive globally to suppress this message
+[Sat Mar 18 14:37:42.334914 2023] [core:error] [pid 1:tid 139960424189248] (30)Read-only file system: AH00099: could not create /usr/local/apache2/logs/httpd.pid.GkxVQg
+[Sat Mar 18 14:37:42.334992 2023] [core:error] [pid 1:tid 139960424189248] AH00100: httpd: could not log pid to file /usr/local/apache2/logs/httpd.pid
+
+To overcome this we have to create a emptyDir volue this this path /usr/local/apache2/logs/httpd.pid
+
+go on k8s documnets and file emptyDir volume 
+
+    volumeMounts:
+    - mountPath: /usr/local/apache2/logs/
+      name: cache-volume
+  volumes:
+  - name: cache-volume
+    emptyDir:
+      sizeLimit: 500Mi
+
+
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: pod
+  name: pod
+spec:
+  containers:
+  - image: httpd
+    name: pod
+    securityContext:                              # we use securi  for readOnlyRootFilesystem
+      readOnlyRootFilesystem: true  
+    volumeMounts:
+    - mountPath: /usr/local/apache2/logs/         # this the path where we want to write by appliction 
+      name: cache-volume
+  volumes:
+  - name: cache-volume                
+    emptyDir: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+
+
+In this pod you can exce but you can't create file or modify anything but u can edit in /usr/local/apache2/logs/ 
+
+k exec -it pod -- /bin/bash 
+
+touch myfile 
+touch: cannot touch 'ls': Read-only file system
+
+cd /usr/local/apache2/logs/
+
+touch myfile          # it will excute 
+
+
+=====================================================================================================
+Auditing:
+=====================================================================================================
+
+
+https://github.com/killer-sh/cks-course-environment/tree/master/course-content/runtime-security/auditing
+
+we are going to set audit log on API server and see the history of audit logs 
+
+as we know all our Activity is going through the kubernetes api so we can create audit log system there 
+
+in kubernates api we below stages 
+
+requestRecived 
+responseStarted 
+responseComplete
+pani 
+
+and in auditPolicy we can log this stages 
+
+we can store log in below level 
+
+none 
+metadata
+request requestResponse 
+
+we can save in different backend can be json file, webhook, dynamic backedn 
+
+on this we can use flutend and you also can use filebeat, elasticSerach 
+
+---------------------
+enable a k8s autdit for kubernetes api
+
+mkdir /etc/kubernetes/audit 
+
+you will find all the yaml in above github 
+
+vi policy.yaml 
+
+apiVersion: audit.k8s.io/v1
+kind: Policy
+rules:
+- level: Metadata
+
+after this we have to edit kube_apiserver the exmaple you will find in same github repo kube-apiserver_enable_auditing.yaml
+
+added 
+
+    - --audit-policy-file=/etc/kubernetes/audit/policy.yaml       # add
+    - --audit-log-path=/etc/kubernetes/audit/logs/audit.log       # add
+    - --audit-log-maxsize=500                                     # add
+    - --audit-log-maxbackup=5                                     # add
+
+
+    - mountPath: /etc/kubernetes/audit      # add
+      name: audit                           # add
+
+
+  - hostPath:                               # add
+      path: /etc/kubernetes/audit           # add
+      type: DirectoryOrCreate               # add
+    name: audit                             # add
+
+
+once kube api server up 
+you can see logs in below file 
+
+cat /etc/kubernetes/audit/logs/audit.log 
+
+Now we are going to create a new secret and see ho it's logiing into th audit.log
+
+k create  secret generic musecrets --from-literal=user=admin      # create normal secrets
+
+cat  audit.log  | grep musecrets      # this hwo we can see what it's loging in audit 
+
+thsi is one recode and in json format you can past in formatter and see all the data 
+
+We just see our audit policy is logging everything that's not what we want so we are restirct log level 
+
+notung from requestRecived
+nothing from get and watch, list 
+only metadata level 
+want to log everything else from requestResponse level 
+
+below is policy.yaml file which will cover above error 
+
+so we are goin gto changes ths policy file
+disable audit loging on api server wait till restart
+enable audti loging agian: here if failed we have to check a logs if it's work test the chnages 
+
+
+
+apiVersion: audit.k8s.io/v1
+kind: Policy
+rules:
+
+# log no "read" actions
+- level: None
+  verbs: ["get", "watch", "list"]
+
+# log nothing regarding events
+- level: None
+  resources:
+  - group: "" # core
+    resources: ["events"]
+
+# log nothing coming from some components
+- level: None
+  users:
+  - "system:kube-scheduler"
+  - "system:kube-proxy"
+  - "system:apiserver"
+  - "system:kube-controller-manager"
+  - "system:serviceaccount:gatekeeper-system:gatekeeper-admin"
+
+# log nothing coming from some groups
+- level: None
+  userGroups: ["system:nodes"]
+
+# for everything else log on response level
+- level: RequestResponse
+
+
+https://www.youtube.com/watch?v=HXtLTxo30SY
+
+
+=====================================================================================================
+kernal harding tools
+=====================================================================================================
+
+
+as you know when we do  any task it's comumnicate with syscall interface 
+
+we are adding one more tool inbetween this can seccom or apparmor 
+
+like our appliction use  filesystem, network and other services with apparmor we can restrict what access we can grant to pod 
+
+to manange this we can create a profile per applicion 
+
+we have below profile log 
+
+unconined : process can escape 
+complian : process can escape but log create 
+enforce: process cann't escap
+
+
+you can test by aa-exec       # if this excute means you have installed apparmor
+
+
+aa-status       # this will show you preocces which is currently laoed 
+
+we have to install few toll to create a new aramor profile 
+
+apt install apparmor-utils
+
+once this is successfuly install we have to use aa-genprof thsi is use tho generate profile 
+
+aa-genprof curl       # creating profile for curl it will show you sacn now or finish we choes f 
+
+now you can't able to do culr to any url 
+
+now see profile 
+
+aa-status       # in this output you will see the our curl profile which we have created just now 
+
+you can find any profile in /etc/apparmor.d/
+
+cd /etc/apparmor.d/     # here you can see the curl profile 
+
+we can allow or deny this profile and see whats going this profile by below cmd 
+
+aa-logprof    there you can see option we can type A to allow  and S for save 
+
+cat usr.bin.curl      # now this have some entry to allow curl 
+
+
+
+
+# apparmor profile
+https://github.com/killer-sh/cks-course-environment/blob/master/course-content/system-hardening/kernel-hardening-tools/apparmor/profile-docker-nginx
+
+
+# k8s docs apparmor
+https://kubernetes.io/docs/tutorials/clusters/apparmor/#example
+
+
+
+https://github.com/killer-sh/cks-course-environment/blob/master/course-content/system-hardening/kernel-hardening-tools/seccomp/profile-docker-nginx.json
+
+
+
+# syscalls
+https://www.youtube.com/watch?v=8g-NUUmCeGI
+
+# AppArmor, SELinux Introduction 
+https://www.youtube.com/watch?v=JFjXvIwAeVI
+
+
+Too see open port 
+
+netstat -plnt | grep 22
+
+lsof -i :22       # to see open port on 22 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
